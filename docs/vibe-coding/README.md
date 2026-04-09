@@ -1,4 +1,4 @@
-# Vibe-Coding Documentation — DerivEdge
+# Vibe-Coding Documentation — TradeVibez
 
 ## What is Vibe-Coding?
 
@@ -8,9 +8,10 @@ Vibe-coding is AI-assisted software development where a human developer collabor
 
 - **Human:** Kumaran — solo developer, architect, decision-maker
 - **AI Co-Pilot:** Claude Code (Claude Opus 4.6) — code generation, API research, debugging
-- **Project:** DerivEdge — real-time trading web app using Deriv API V2
+- **Project:** TradeVibez — real-time trading web app using Deriv API V2
+- **Live URL:** https://tradevibez.netlify.app
 - **Timeline:** ~10 days (April 6–17, 2026)
-- **Stack:** Next.js 15, Tailwind CSS, Deriv API V2 (REST + WebSocket)
+- **Stack:** Next.js 15, Tailwind CSS v4, Deriv API V2 (REST + WebSocket)
 
 ## How We Work
 
@@ -32,9 +33,14 @@ Vibe-coding is AI-assisted software development where a human developer collabor
 
 | Metric | Value |
 |--------|-------|
-| Build phases completed | 1 / 7 |
-| Total meaningful prompts | — |
-| Files generated with AI | — |
-| Iterations documented | — |
-| Bugs caught by AI | — |
-| Bugs introduced by AI | — |
+| Build phases completed | 3 / 7 (Foundation, Market Data, Auth) |
+| Total meaningful interactions | 18 |
+| Files generated with AI | 32 |
+| Architecture decisions documented | 8 |
+| Iterations documented | 5 |
+| Lessons learned | 7 |
+| Bugs introduced by AI | 2 (chart v5 API, TypeScript strict) |
+| Bugs fixed by AI | 2 (same session, <5 min each) |
+| App renames | 3 (DerivEdge → VibeTrader → TradeVibez) |
+| Deploy attempts | 2 (1 failed blobs error, 1 success) |
+| OAuth flow | Working end-to-end on first proper attempt |

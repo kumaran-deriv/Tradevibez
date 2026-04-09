@@ -1,43 +1,239 @@
 @import "tailwindcss";
 
-@theme {
-  --color-surface-primary: #030712;
-  --color-surface-secondary: #111827;
-  --color-surface-tertiary: #1f2937;
-  --color-border-primary: #1f2937;
-  --color-profit: #34d399;
-  --color-loss: #f87171;
-  --color-accent: #2563eb;
-  --color-accent-hover: #3b82f6;
+/* ─── Design Tokens ─────────────────────────────────────── */
+
+:root,
+[data-theme="dark"] {
+  --bg-base:        #080d18;
+  --bg-card:        #0d1321;
+  --bg-hover:       #131c2e;
+  --bg-input:       #131c2e;
+  --bg-glass:       rgba(8, 13, 24, 0.80);
+  --border:         rgba(255, 255, 255, 0.07);
+  --border-strong:  rgba(255, 255, 255, 0.12);
+  --text-primary:   #e2e8f0;
+  --text-secondary: #64748b;
+  --text-muted:     #334155;
+  --accent:         #14b8a6;
+  --accent-hover:   #2dd4bf;
+  --accent-dim:     #0d9488;
+  --accent-glow:    rgba(20, 184, 166, 0.12);
+  --accent-glow-lg: rgba(20, 184, 166, 0.06);
+  --profit:         #14b8a6;
+  --loss:           #f87171;
+  --shadow-card:    0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-glow:    0 0 32px rgba(20, 184, 166, 0.08);
+
+  /* Legacy surface vars — kept for dashboard pages */
+  --color-surface-primary:   #080d18;
+  --color-surface-secondary: #0d1321;
+  --color-surface-tertiary:  #131c2e;
+  --color-border-primary:    rgba(255, 255, 255, 0.07);
+  --color-profit:  #14b8a6;
+  --color-loss:    #f87171;
+  --color-accent:  #14b8a6;
+  --color-accent-hover: #2dd4bf;
+}
+
+[data-theme="light"] {
+  --bg-base:        #f8fafc;
+  --bg-card:        #ffffff;
+  --bg-hover:       #f1f5f9;
+  --bg-input:       #f1f5f9;
+  --bg-glass:       rgba(255, 255, 255, 0.85);
+  --border:         #e2e8f0;
+  --border-strong:  #cbd5e1;
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+  --accent:         #0d9488;
+  --accent-hover:   #14b8a6;
+  --accent-dim:     #0f766e;
+  --accent-glow:    rgba(13, 148, 136, 0.10);
+  --accent-glow-lg: rgba(13, 148, 136, 0.04);
+  --profit:         #0d9488;
+  --loss:           #dc2626;
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px #e2e8f0;
+  --shadow-glow:    0 4px 24px rgba(13, 148, 136, 0.08);
+
+  /* Legacy surface vars */
+  --color-surface-primary:   #f8fafc;
+  --color-surface-secondary: #f1f5f9;
+  --color-surface-tertiary:  #e2e8f0;
+  --color-border-primary:    #e2e8f0;
+  --color-profit:  #0d9488;
+  --color-loss:    #dc2626;
+  --color-accent:  #0d9488;
+  --color-accent-hover: #14b8a6;
+}
+
+/* ─── Base ───────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background-color: var(--color-surface-primary);
-  color: #f9fafb;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Tabular numbers for price displays */
+.font-display {
+  font-family: var(--font-outfit), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Theme-aware transitions — only on color/bg, not layout */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease;
+}
+
+svg,
+img,
+video,
+canvas {
+  transition: none;
+}
+
+/* ─── Utilities ─────────────────────────────────────────── */
+
 .font-tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Custom scrollbar for dark theme */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent) 0%, #2dd4bf 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.gradient-text-warm {
+  background: linear-gradient(135deg, #fb923c 0%, #f59e0b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #374151;
-  border-radius: 3px;
+.btn-gradient {
+  background: linear-gradient(135deg, #14b8a6 0%, #06b6d4 100%);
+  transition: opacity 150ms, transform 150ms;
+}
+.btn-gradient:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #4b5563;
+.card-glow:hover {
+  box-shadow: 0 0 28px rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.25) !important;
+  transform: translateY(-2px);
 }
+
+.game-card-glow-teal:hover {
+  box-shadow: 0 0 32px rgba(20, 184, 166, 0.2);
+  border-color: rgba(20, 184, 166, 0.5) !important;
+  transform: translateY(-3px);
+}
+
+.game-card-glow-orange:hover {
+  box-shadow: 0 0 32px rgba(251, 146, 60, 0.2);
+  border-color: rgba(251, 146, 60, 0.5) !important;
+  transform: translateY(-3px);
+}
+
+.glass-nav {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ─── Landing-page specific ─────────────────────────────── */
+
+/* Ticker strip */
+.ticker-track {
+  display: flex;
+  gap: 0;
+  animation: scroll-left 40s linear infinite;
+  width: max-content;
+}
+
+.ticker-wrap:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* Candlestick bars */
+.candle-bar {
+  width: 10px;
+  border-radius: 2px;
+  transform-origin: bottom;
+  animation: bar-grow 0.6s ease both;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────── */
+
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Keyframes ─────────────────────────────────────────── */
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scroll-left {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes bar-grow {
+  from { transform: scaleY(0); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes pulse-teal {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+@keyframes fill-gauge {
+  from { width: 0%; }
+  to   { width: var(--gauge-target, 50%); }
+}
+
+@keyframes scale-in {
+  from { transform: scale(0); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@keyframes slide-right {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fade-up  { animation: fade-up  0.5s ease both; }
+.animate-fade-in  { animation: fade-in  0.4s ease both; }
+.animate-pulse-teal { animation: pulse-teal 2s ease-in-out infinite; }
+
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+.delay-700 { animation-delay: 700ms; }

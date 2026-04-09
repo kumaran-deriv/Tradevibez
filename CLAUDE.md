@@ -1,16 +1,22 @@
-# DerivEdge — Project Instructions
+# TradeVibez — Project Instructions
 
 ## What This Is
 A real-time trading web app built with the Deriv API V2 for a hackathon competition. Due: April 17, 2026.
 
+## Live URL
+https://tradevibez.vercel.app
+
+## Previous URL (Netlify — avoid deploying there, costs 15 credits/deploy)
+https://tradevibez.netlify.app
+
 ## Tech Stack
 - **Framework:** Next.js 15 (App Router)
 - **Styling:** Tailwind CSS v4
-- **Charts:** TradingView Lightweight Charts
+- **Charts:** TradingView Lightweight Charts v5
 - **Icons:** Lucide React
 - **API:** Deriv API V2 (REST + WebSocket)
-- **Deploy:** Vercel
-- **App ID:** 1089 (test default)
+- **Deploy:** Netlify (CLI direct deploy)
+- **App ID:** 32UW1L6hUAlU84UGUFXyZ
 
 ## Role-Based Skills
 Before writing any code, read the relevant skills file:
@@ -40,17 +46,34 @@ This is a first-class competition deliverable. After completing any meaningful w
 
 ## Environment Variables
 ```
-NEXT_PUBLIC_DERIV_APP_ID=1089
-DERIV_APP_ID=1089
-DERIV_OAUTH_REDIRECT_URI=http://localhost:3000/api/auth/callback
+NEXT_PUBLIC_DERIV_APP_ID=32UW1L6hUAlU84UGUFXyZ
+DERIV_APP_ID=32UW1L6hUAlU84UGUFXyZ
+DERIV_OAUTH_REDIRECT_URI=https://tradevibez.netlify.app/api/auth/callback
 ```
 
 ## Commands
 ```bash
-npm run dev      # Start dev server
-npm run build    # Production build
-npm run lint     # Run linter
+npm run dev                    # Start dev server (local)
+npm run build                  # Production build
+npm run lint                   # Run linter
+npx vercel --prod              # Deploy to production (Vercel, free)
+npx vercel redeploy <id>       # Redeploy existing build with updated env vars
 ```
+
+## Current Status
+- [x] Slice 1: Foundation (layout, UI primitives, landing page)
+- [x] Slice 2: Market Data (public WS, live ticks, charts)
+- [x] Slice 3: Authentication (OAuth PKCE, accounts, login/logout)
+- [x] Slice 4: Trading Execution (proposals, buy/sell, positions)
+- [x] Slice 5: Trade History & Analytics
+- [x] Slice 6: Innovation (Gamified Trading — Rise/Fall + Digits games at /games)
+- [ ] Slice 7: Polish & Deploy
+
+## Known Issues
+- Header account dropdown shows duplicate account ID
+- Demo badge positioning in account menu needs cleanup
+- Sidebar collapse doesn't sync with Header left offset
+- Balance in header is static from account fetch (not live subscription yet)
 
 ## File Conventions
 - Components: `PascalCase.tsx`

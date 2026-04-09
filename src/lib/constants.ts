@@ -34,5 +34,6 @@ export const MARKET_GROUPS = [
 export const NAV_ITEMS = [
   { label: "Markets", href: "/dashboard", icon: "LayoutDashboard", auth: false },
   { label: "Trade", href: "/trade", icon: "TrendingUp", auth: true },
+  { label: "Games", href: "/games", icon: "Gamepad2", auth: true },
   { label: "History", href: "/history", icon: "History", auth: true },
 ] as const;
