@@ -82,28 +82,6 @@ Built solo in 12 days for the Deriv Hackathon (April 2026) using AI-assisted vib
 
 ---
 
-## Quick Start
-
-```bash
-# Clone
-git clone https://github.com/anthropics/tradevibez.git
-cd tradevibez
-
-# Install
-npm install
-
-# Environment
-cp .env.example .env.local
-# Set NEXT_PUBLIC_DERIV_APP_ID=32UW1L6hUAlU84UGUFXyZ
-
-# Dev server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) and log in with a Deriv demo account.
-
----
-
 ## Vibe-Coding
 
 This project was built using AI-assisted vibe-coding — every feature designed, implemented, and debugged through human-AI collaboration.
