@@ -145,6 +145,6 @@ docs/
 ## Built By
 
 **Kumaran Subramani** — Solo developer & architect
-**Claude Code (Opus 4.6)** — AI co-pilot
+**Claude Code (Sonnet/Opus 4.6)** — AI co-pilot
 
 Built for the Deriv API V2 Hackathon, April 2026.
