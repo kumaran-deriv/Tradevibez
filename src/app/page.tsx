@@ -11,11 +11,14 @@ import {
   ArrowRight,
   ChevronRight,
   Sparkles,
+  Gamepad2,
+  LayoutDashboard,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import { useActiveSymbols } from "@/hooks/useActiveSymbols";
 import { SpaceView } from "@/components/landing/SpaceView";
+import { useUserProfile } from "@/hooks/useUserProfile";
 import { Sun, Moon } from "lucide-react";
 
 /* ─── Static data ────────────────────────────────────────── */
@@ -467,29 +470,48 @@ function CTABand({ isAuthenticated, login }: { isAuthenticated: boolean; login: 
         </p>
         <div className="flex items-center justify-center gap-4 flex-wrap">
           {isAuthenticated ? (
-            <Link
-              href="/dashboard"
-              className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
-            >
-              Go to Dashboard <ArrowRight className="h-4 w-4" />
-            </Link>
+            <>
+              <Link
+                href="/dashboard"
+                className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Open Dashboard
+              </Link>
+              <Link
+                href="/games"
+                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl border transition-all duration-150"
+                style={{
+                  borderColor: "rgba(168,85,247,0.4)",
+                  background: "rgba(168,85,247,0.08)",
+                  color: "#a855f7",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(168,85,247,0.15)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(168,85,247,0.08)"; }}
+              >
+                <Gamepad2 className="h-4 w-4" />
+                Try a Game
+              </Link>
+            </>
           ) : (
-            <button
-              onClick={login}
-              className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
-            >
-              Connect Deriv Account <ArrowRight className="h-4 w-4" />
-            </button>
+            <>
+              <button
+                onClick={login}
+                className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
+              >
+                Connect Deriv Account <ArrowRight className="h-4 w-4" />
+              </button>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-xl border transition-all duration-150"
+                style={{ borderColor: "var(--border-strong)", color: "var(--text-secondary)" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
+              >
+                View Markets
+              </Link>
+            </>
           )}
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-xl border transition-all duration-150"
-            style={{ borderColor: "var(--border-strong)", color: "var(--text-secondary)" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; (e.currentTarget as HTMLElement).style.borderColor = "var(--border-strong)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)"; }}
-          >
-            View Markets
-          </Link>
         </div>
       </div>
     </section>
@@ -501,6 +523,7 @@ function CTABand({ isAuthenticated, login }: { isAuthenticated: boolean; login: 
 export default function LandingPage() {
   const { isAuthenticated, login, error } = useAuth();
   const { symbols } = useActiveSymbols();
+  const userProfile = useUserProfile();
   const router = useRouter();
 
   return (
@@ -525,14 +548,17 @@ export default function LandingPage() {
             {/* Pill eyebrow */}
             <div
               className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold mb-7 animate-fade-in"
-              style={{
-                background: "rgba(20,184,166,0.08)",
-                border: "1px solid rgba(20,184,166,0.2)",
-                color: "var(--accent)",
-              }}
+              style={
+                isAuthenticated
+                  ? { background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }
+                  : { background: "rgba(20,184,166,0.08)", border: "1px solid rgba(20,184,166,0.2)", color: "var(--accent)" }
+              }
             >
-              <span className="animate-pulse-teal h-1.5 w-1.5 rounded-full inline-block" style={{ background: "var(--accent)" }} />
-              Deriv API V2 · Real-Time Execution
+              <span
+                className="animate-pulse-teal h-1.5 w-1.5 rounded-full inline-block"
+                style={{ background: isAuthenticated ? "#34d399" : "var(--accent)" }}
+              />
+              {isAuthenticated ? "Connected · Demo Account Live" : "Deriv API V2 · Real-Time Execution"}
             </div>
 
             {/* Headline */}
@@ -540,47 +566,83 @@ export default function LandingPage() {
               className="font-display text-6xl lg:text-7xl font-black tracking-[-0.02em] leading-[1.05] mb-6 animate-fade-up delay-100"
               style={{ color: "var(--text-primary)" }}
             >
-              Trade faster.{" "}
-              <br />
-              Risk smarter.{" "}
-              <br />
-              <span className="gradient-text">Win bigger.</span>
+              {isAuthenticated ? (
+                <>
+                  Welcome back
+                  {userProfile?.displayName ? "," : "."}{" "}
+                  <br />
+                  {userProfile?.displayName && (
+                    <><span className="gradient-text">{userProfile.displayName}.</span><br /></>
+                  )}
+                  <span style={{ color: "var(--text-primary)" }}>
+                    Ready to trade.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Trade faster.{" "}
+                  <br />
+                  Risk smarter.{" "}
+                  <br />
+                  <span className="gradient-text">Win bigger.</span>
+                </>
+              )}
             </h1>
 
             <p
               className="text-lg leading-relaxed mb-10 max-w-md animate-fade-up delay-200"
               style={{ color: "var(--text-secondary)" }}
             >
-              Professional-grade trading built on Deriv API V2. Live charts, real-time
-              execution, and deep analytics — all in one dashboard.
+              {isAuthenticated
+                ? "Your portfolio is live. Jump into the dashboard to trade, or try our gamified options for a quick round."
+                : "Professional-grade trading built on Deriv API V2. Live charts, real-time execution, and deep analytics — all in one dashboard."}
             </p>
 
             {/* CTAs */}
             <div className="flex items-center gap-4 flex-wrap mb-12 animate-fade-up delay-300">
               {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
-                >
-                  Go to Dashboard <ArrowRight className="h-4 w-4" />
-                </Link>
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    Open Dashboard
+                  </Link>
+                  <Link
+                    href="/games"
+                    className="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold rounded-xl border transition-all duration-150"
+                    style={{
+                      borderColor: "rgba(168,85,247,0.4)",
+                      background: "rgba(168,85,247,0.08)",
+                      color: "#a855f7",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(168,85,247,0.15)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(168,85,247,0.08)"; }}
+                  >
+                    <Gamepad2 className="h-4 w-4" />
+                    Play Games
+                  </Link>
+                </>
               ) : (
-                <button
-                  onClick={login}
-                  className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
-                >
-                  Start Trading
-                </button>
+                <>
+                  <button
+                    onClick={login}
+                    className="btn-gradient inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold rounded-xl text-white"
+                  >
+                    Start Trading <ArrowRight className="h-4 w-4" />
+                  </button>
+                  <Link
+                    href="/dashboard"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors duration-150"
+                    style={{ color: "var(--text-secondary)" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "var(--text-primary)")}
+                    onMouseLeave={e => (e.currentTarget.style.color = "var(--text-secondary)")}
+                  >
+                    Explore Markets <ChevronRight className="h-4 w-4" />
+                  </Link>
+                </>
               )}
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors duration-150"
-                style={{ color: "var(--text-secondary)" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--text-primary)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-secondary)")}
-              >
-                Explore Markets <ChevronRight className="h-4 w-4" />
-              </Link>
             </div>
 
             {/* Micro-stats — pill chips */}

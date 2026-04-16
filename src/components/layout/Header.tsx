@@ -6,14 +6,26 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
+import { useBalance } from "@/hooks/useBalance";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { formatCurrency } from "@/utils/formatters";
+import { useUserProfile } from "@/hooks/useUserProfile";
+
+function accountLabel(accountType: "demo" | "real", currency: string): string {
+  return accountType === "demo" ? `Demo · ${currency}` : `Real · ${currency}`;
+}
 
 export function Header() {
   const { isAuthenticated, activeAccount, accounts, loading, login, logout, setActiveAccount } =
     useAuth();
   const { collapsed } = useSidebar();
+  const { balance: liveBalance } = useBalance(isAuthenticated);
+  const userProfile = useUserProfile();
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+
+  // Live balance: prefer WS subscription value, fall back to REST snapshot
+  const displayBalance = liveBalance?.balance ?? activeAccount?.balance ?? 0;
+  const displayCurrency = liveBalance?.currency ?? activeAccount?.currency ?? "USD";
 
   return (
     <header
@@ -56,7 +68,7 @@ export function Header() {
                 className="text-sm font-mono font-medium tabular-nums"
                 style={{ color: "var(--text-primary)" }}
               >
-                {formatCurrency(activeAccount.balance, activeAccount.currency)}
+                {formatCurrency(displayBalance, displayCurrency)}
               </span>
               <Badge variant={activeAccount.account_type === "demo" ? "info" : "profit"}>
                 {activeAccount.account_type === "demo" ? "Demo" : "Real"}
@@ -77,7 +89,11 @@ export function Header() {
                 }
               >
                 <User className="h-4 w-4" />
-                <span className="text-xs font-mono">{activeAccount.account_id}</span>
+                <span className="text-xs font-mono">
+                  {userProfile?.displayName
+                    ? `${userProfile.displayName} · ${activeAccount.account_type === "demo" ? "Demo" : "Real"}`
+                    : accountLabel(activeAccount.account_type, activeAccount.currency)}
+                </span>
                 <ChevronDown className="h-3 w-3" />
               </button>
 
@@ -88,6 +104,23 @@ export function Header() {
                     className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border p-2 shadow-xl"
                     style={{ background: "var(--bg-card)", borderColor: "var(--border-strong)" }}
                   >
+                    {userProfile && (userProfile.firstName || userProfile.email) && (
+                      <div className="px-3 py-2 mb-1">
+                        {(userProfile.firstName || userProfile.lastName) && (
+                          <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+                            {[userProfile.firstName, userProfile.lastName].filter(Boolean).join(" ")}
+                          </p>
+                        )}
+                        {userProfile.email && (
+                          <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                            {userProfile.email}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {userProfile && (
+                      <div className="my-1 border-t" style={{ borderColor: "var(--border)" }} />
+                    )}
                     {accounts.map((acc) => (
                       <button
                         key={acc.account_id}
@@ -114,9 +147,11 @@ export function Header() {
                         }}
                       >
                         <div>
-                          <p className="font-medium font-mono text-xs">{acc.account_id}</p>
-                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                            {formatCurrency(acc.balance, acc.currency)}
+                          <p className="font-medium text-xs">
+                            {accountLabel(acc.account_type, acc.currency)}
+                          </p>
+                          <p className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                            {acc.account_id}
                           </p>
                         </div>
                         <Badge variant={acc.account_type === "demo" ? "info" : "profit"}>

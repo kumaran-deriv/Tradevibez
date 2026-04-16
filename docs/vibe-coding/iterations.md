@@ -1,4 +1,4 @@
-# Iterations Log — DerivEdge
+# Iterations Log — TradeVibez
 
 Before/after evolution of features, components, and approaches. Shows how the app improved through AI-assisted iteration.
 
@@ -366,3 +366,82 @@ For solo mode, `BearVsBullGame` shows full settings (market, ticks, side, stake)
 - If absent → show the full solo settings screen
 
 URL auto-detection in `games/page.tsx`: if `window.location.search.includes("duel=")`, auto-opens the group game lobby. Guests who click the share link land directly in the join flow without any extra navigation.
+
+---
+
+## Bear vs Bull — GLTF Character Calibration
+
+### Problem
+After switching to real GLB models (Bull.glb + Black bear.glb), three visual issues appeared:
+- Arena too dark — `ambientLight intensity={0.5}` insufficient for dark-material GLTF models
+- Bull too large — `scale={1.8}` on a model with geometry in ~0.01 unit space was enormous
+- Characters facing outward — rotation signs were inverted; each model faced away from the other
+
+### Root Cause: Default Model Orientation
+GLB models have their own facing direction baked in at export time. The bull faces +Z by default. Rotating by `-Math.PI/2` turns it -90° to face -X (away from the bear at +X). The correct rotation to face +X is `+Math.PI/2`. The bear had the same problem in reverse.
+
+### Final Values
+- Bull: `scale={0.58}`, `rotation={[0, Math.PI/2, 0]}`
+- Bear: `scale={0.22}`, `rotation={[0, -Math.PI/2, 0]}`
+- Ambient: `intensity={2.0}` + `hemisphereLight` for fill
+
+**Lesson:** When a GLB character faces the wrong direction, don't guess rotations — think about the model's local +Z axis and which world axis it needs to face. Rotation is `π/2 * sign`.
+
+---
+
+## Bear vs Bull — Sound + Tick Transparency
+
+### Sounds: Web Audio API over External Files
+External audio files (MP3/OGG) would need hosting, CORS handling, and load time. Web Audio API oscillators are synthesized in-process with zero dependencies. For a game with 5 distinct sound types, the oscillator approach is faster to build and ship.
+
+Pattern used — each sound is a one-shot oscillator:
+```typescript
+const osc = ctx.createOscillator(), gain = ctx.createGain();
+osc.connect(gain); gain.connect(ctx.destination);
+osc.frequency.setValueAtTime(startHz, ctx.currentTime);
+osc.frequency.exponentialRampToValueAtTime(endHz, ctx.currentTime + duration);
+gain.gain.setValueAtTime(volume, ctx.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+osc.start(ctx.currentTime); osc.stop(ctx.currentTime + duration);
+```
+
+### Tick Feed: Proof of Fairness
+The tick feed overlay answers the question "is this real?" — players can see the exact Deriv prices driving the fight in real time. This is critical for a trading game: it establishes trust that the outcome isn't random, it's the market.
+
+Design: 8-row scrolling list, newest at top, older rows fade out. Color matches the fight (green = bull attack, red = bear attack). Disappears on result to let the outcome card dominate.
+
+---
+
+## Hex Color Filler — Canvas Initialization Timing Bug
+
+### Iteration 1: Synchronous reset() in click handler
+Called `canvasRef.current?.reset(playerSide)` in `handleLaunch()`. Canvas is conditionally rendered — it only mounts after `setGameState("live")` triggers a re-render. So `canvasRef.current` is always `null` at the time of the call. `neutralKeys` stays empty. `claimHex()` returns immediately on every tick. No hexes fill.
+
+### Iteration 2 (Fix): Mount useEffect + gameState useEffect
+Two-part fix:
+1. `HexColorFillerCanvas` calls `rebuild()` in a mount `useEffect` — populates `hexMapRef` and `neutralKeys` the moment the canvas mounts, regardless of whether `reset` was called
+2. `HexColorFillerGame` calls `canvasRef.current?.reset(playerSideRef.current)` in a `useEffect` watching `gameState` — fires after React commits the new render (canvas is mounted by then)
+
+```typescript
+// Canvas
+useEffect(() => { rebuild(); }, []);
+
+// Game
+useEffect(() => {
+  if (gameState === "live") canvasRef.current?.reset(playerSideRef.current);
+}, [gameState]);
+```
+
+**Takeaway:** Any time you conditionally render a canvas/ref component and need to call an imperative method on it right after mount, the click handler is too early — use a `useEffect` in the parent that watches the state that triggered the render.
+
+---
+
+## Multiplayer Room Code — URL → 6-char Code
+
+### Iteration 1: Full URL sharing
+Host generated `{origin}/games?duel={base64json}`. Guest pasted the full URL. Problems: URL is ~80 chars, awkward to type, breaks if origin changes.
+
+### Iteration 2: 6-char base36 code
+Bit-pack `symbolIdx (2 bits) + ticksIdx (2 bits) + secondsSinceEpoch (26 bits)` = 30 bits. `.toString(36).toUpperCase().padStart(6,'0')`. Display as `B8H VNK` (3+3 split). Max encodable value = ~738M, well within 36^6 = 2.18B.
+
+Benefits: memorable, easy to read aloud, no URL dependency, decodes deterministically on any client. Kept legacy base64 URL decode as fallback for back-compat.

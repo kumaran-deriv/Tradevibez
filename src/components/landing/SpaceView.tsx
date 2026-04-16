@@ -6,49 +6,67 @@ import type { ActiveSymbol } from "@/types/deriv";
 /* ─── Config ──────────────────────────────────────────────── */
 
 // Perspective factor: how flat the orbital plane appears (0 = flat line, 1 = circle)
-const PERSP = 0.3;
+const PERSP = 0.36;
 
-const W = 540;
-const H = 290;
+const W = 640;
+const H = 420;
 const cx = W / 2;
 const cy = H / 2;
 
 const RINGS = [
-  { radius: 55,  period: 8  },
-  { radius: 90,  period: 12 },
-  { radius: 125, period: 17 },
-  { radius: 162, period: 22 },
-  { radius: 198, period: 28 },
+  { radius: 72,  period: 8  },
+  { radius: 118, period: 12 },
+  { radius: 166, period: 17 },
+  { radius: 216, period: 22 },
+  { radius: 268, period: 28 },
 ];
 
 const RING_CAPACITY = [4, 5, 5, 5, 6];
 
 const MARKET_STYLE: Record<string, { color: string; glow: string }> = {
-  synthetic_index: { color: "#14b8a6", glow: "rgba(20,184,166,0.75)"  },
+  synthetic_index: { color: "#14b8a6", glow: "rgba(20,184,166,0.75)"  }, // fallback teal
   forex:           { color: "#60a5fa", glow: "rgba(96,165,250,0.75)"  },
   indices:         { color: "#fb923c", glow: "rgba(251,146,60,0.75)"  },
   commodities:     { color: "#fbbf24", glow: "rgba(251,191,36,0.75)"  },
   cryptocurrency:  { color: "#a78bfa", glow: "rgba(167,139,250,0.75)" },
 };
 
+// Synthetic sub-type colours — makes the galaxy visually diverse
+function syntheticStyle(symbol: string): { color: string; glow: string } {
+  if (symbol.startsWith("BOOM"))   return { color: "#f59e0b", glow: "rgba(245,158,11,0.8)"  }; // gold
+  if (symbol.startsWith("CRASH"))  return { color: "#f87171", glow: "rgba(248,113,113,0.8)" }; // red
+  if (symbol.startsWith("STEP_"))  return { color: "#c084fc", glow: "rgba(192,132,252,0.8)" }; // purple
+  if (symbol.startsWith("JD"))     return { color: "#facc15", glow: "rgba(250,204,21,0.8)"  }; // yellow
+  if (symbol.startsWith("RB_"))    return { color: "#22d3ee", glow: "rgba(34,211,238,0.8)"  }; // cyan
+  if (symbol.startsWith("OTC_"))   return { color: "#fb923c", glow: "rgba(251,146,60,0.8)"  }; // orange
+  return { color: "#14b8a6", glow: "rgba(20,184,166,0.75)" }; // Volatility (R_) — teal
+}
+
 const MARKET_LABEL: Record<string, string> = {
-  synthetic_index: "Syn",
+  synthetic_index: "Vol",
   forex:           "Forex",
   indices:         "Idx",
   commodities:     "Com",
   cryptocurrency:  "Crypto",
 };
 
+const SYNTHETIC_LEGEND = [
+  { prefix: "BOOM",  color: "#f59e0b", label: "Boom"  },
+  { prefix: "CRASH", color: "#f87171", label: "Crash" },
+  { prefix: "R_",    color: "#14b8a6", label: "Vol"   },
+  { prefix: "STEP_", color: "#c084fc", label: "Step"  },
+];
+
 /* ─── Deterministic star field ────────────────────────────── */
 
 const STARS = (() => {
   let s = 137;
   const lcg = () => { s = (Math.imul(s, 1664525) + 1013904223) | 0; return (s >>> 0) / 4294967296; };
-  return Array.from({ length: 80 }, () => ({
+  return Array.from({ length: 140 }, () => ({
     x: lcg() * 100,
     y: lcg() * 100,
-    r: lcg() < 0.65 ? 0.5 : 1,
-    op: 0.15 + lcg() * 0.55,
+    r: lcg() < 0.55 ? 0.5 : lcg() < 0.85 ? 1 : 1.5,
+    op: 0.12 + lcg() * 0.6,
   }));
 })();
 
@@ -88,9 +106,12 @@ function buildPlanets(symbols: ActiveSymbol[]): PlanetDef[] {
 
     for (let j = 0; j < cap && idx < selected.length; j++, idx++) {
       const sym = selected[idx];
-      const style = MARKET_STYLE[sym.market] ?? MARKET_STYLE.synthetic_index;
+      const style =
+        sym.market === "synthetic_index"
+          ? syntheticStyle(sym.underlying_symbol)
+          : (MARKET_STYLE[sym.market] ?? MARKET_STYLE.synthetic_index);
       const norm = (sym.trade_count - minTc) / tcRange;
-      const size = 9 + norm * 17; // 9–26 px
+      const size = 13 + norm * 21; // 13–34 px
 
       planets.push({
         symbol: sym.underlying_symbol,
@@ -161,12 +182,12 @@ export function SpaceView({ symbols, onSelectSymbol }: SpaceViewProps) {
         width: W,
         height: H,
         maxWidth: "100%",
-        borderRadius: 14,
+        borderRadius: 18,
         background:
-          "radial-gradient(ellipse at 45% 40%, #0e1c35 0%, #060c18 50%, #020508 100%)",
-        border: "1px solid rgba(255,255,255,0.07)",
+          "radial-gradient(ellipse at 48% 45%, #0d1f3c 0%, #060f1f 40%, #020710 70%, #010408 100%)",
+        border: "1px solid rgba(255,255,255,0.08)",
         boxShadow:
-          "0 0 0 1px rgba(0,0,0,0.5), 0 24px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
+          "0 0 0 1px rgba(0,0,0,0.6), 0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05), 0 0 120px rgba(20,184,166,0.06)",
         overflow: "hidden",
         flexShrink: 0,
       }}
@@ -240,14 +261,14 @@ export function SpaceView({ symbols, onSelectSymbol }: SpaceViewProps) {
       <div
         style={{
           position: "absolute",
-          left: cx - 16,
-          top: cy - 16,
-          width: 32,
-          height: 32,
+          left: cx - 22,
+          top: cy - 22,
+          width: 44,
+          height: 44,
           borderRadius: "50%",
           background: "radial-gradient(circle at 33% 33%, #99f6e4, #14b8a6 45%, #0d9488 80%)",
           boxShadow:
-            "0 0 16px rgba(20,184,166,0.95), 0 0 40px rgba(20,184,166,0.45), 0 0 80px rgba(20,184,166,0.18)",
+            "0 0 20px rgba(20,184,166,0.98), 0 0 52px rgba(20,184,166,0.5), 0 0 100px rgba(20,184,166,0.2)",
           zIndex: 2,
           pointerEvents: "none",
         }}
@@ -361,18 +382,28 @@ export function SpaceView({ symbols, onSelectSymbol }: SpaceViewProps) {
           right: 0,
           display: "flex",
           justifyContent: "center",
-          gap: 12,
+          gap: 10,
           pointerEvents: "none",
         }}
       >
-        {Object.entries(MARKET_STYLE).map(([market, { color }]) => (
-          <div key={market} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        {/* Synthetic sub-types */}
+        {SYNTHETIC_LEGEND.map(({ color, label }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: color }} />
-            <span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em" }}>
-              {MARKET_LABEL[market]}
-            </span>
+            <span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em" }}>{label}</span>
           </div>
         ))}
+        {/* Non-synthetic markets */}
+        {Object.entries(MARKET_STYLE)
+          .filter(([m]) => m !== "synthetic_index")
+          .map(([market, { color }]) => (
+            <div key={market} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: color }} />
+              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", letterSpacing: "0.05em" }}>
+                {MARKET_LABEL[market]}
+              </span>
+            </div>
+          ))}
       </div>
     </div>
   );

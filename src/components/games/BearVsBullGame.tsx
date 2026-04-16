@@ -37,6 +37,23 @@ const GAME_MARKETS = [
 const TICK_OPTIONS = [5, 10, 20] as const;
 const STAKE_PRESETS = [5, 10, 25, 50];
 
+/* ─── Commentary ─────────────────────────────────────────── */
+
+const COMMENTARY = {
+  critBull:  ["MASSIVE BULL SURGE! 🐂⚡", "PRICE EXPLODES! 🚀", "BULL DOMINATES THE RING! 💥", "UNSTOPPABLE GREEN CANDLE! 🟢"],
+  critBear:  ["BEAR SMASHES THROUGH! 🐻⚡", "MARKET CRASHES HARD! 📉", "BRUTAL BEAR MAULING! 💥", "RED CANDLE DEVASTATION! 🔴"],
+  comboBull: ["BULL ON A ROLL! 🔥🐂", "CONSECUTIVE GREENS! 🟢🟢🟢", "THE BULLS WON'T STOP! ⚡"],
+  comboBear: ["BEARS KEEP HAMMERING! 🔥🐻", "RED CANDLES ALL DAY! 🔴🔴🔴", "RELENTLESS BEAR FORCE! ⚡"],
+  powerBull: ["POWER COMBO! BULL SURGING! 🌊", "5× BULL STREAK! THE CROWD GOES WILD! 🎉"],
+  powerBear: ["POWER COMBO! BEAR RAMPAGING! 🌊", "5× BEAR STREAK! PANIC IN THE ARENA! 😱"],
+  lowHpBull: ["BULL IS IN DANGER! ❤️", "THE BULL IS BARELY STANDING! 😰", "BULL ON THE ROPES! 🚨"],
+  lowHpBear: ["BEAR IS WOBBLING! ❤️", "THE BEAR IS DOWN TO LAST HP! 😱", "BEAR ON THE BRINK! 🚨"],
+};
+
+function pickComment(arr: string[]): string {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 /* ─── Damage calculation ─────────────────────────────────── */
 
 function getDamage(
@@ -62,6 +79,7 @@ interface FightResult {
   playerWon: boolean;
   buyPrice: number;
   payout: number;
+  cashedOut?: boolean;
 }
 
 /* ─── HP Bar ─────────────────────────────────────────────── */
@@ -113,6 +131,146 @@ function HpBar({ hp, maxHp = 100, color, label, align }: {
   );
 }
 
+/* ─── Tick feed entry ────────────────────────────────────── */
+
+interface TickEntry {
+  n: number;
+  quote: number;
+  delta: number;
+  dir: "up" | "down" | "flat";
+}
+
+function TickFeed({ ticks }: { ticks: TickEntry[] }) {
+  if (ticks.length === 0) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 16,
+        top: 70,
+        width: 130,
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)", letterSpacing: "0.2em", marginBottom: 2 }}>
+        LIVE TICKS
+      </div>
+      {ticks.slice(-8).reverse().map((t, i) => (
+        <div
+          key={t.n}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "3px 8px",
+            borderRadius: 4,
+            background: "rgba(6,11,20,0.82)",
+            border: `1px solid ${t.dir === "up" ? "rgba(34,197,94,0.25)" : t.dir === "down" ? "rgba(239,68,68,0.25)" : "rgba(255,255,255,0.05)"}`,
+            opacity: Math.max(0.25, 1 - i * 0.1),
+          }}
+        >
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)" }}>
+            #{t.n}
+          </span>
+          <span style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-primary)" }}>
+            {t.quote.toFixed(2)}
+          </span>
+          <span style={{ fontSize: 13, color: t.dir === "up" ? "#22c55e" : t.dir === "down" ? "#ef4444" : "var(--text-muted)" }}>
+            {t.dir === "up" ? "▲" : t.dir === "down" ? "▼" : "—"}
+          </span>
+          <span style={{ fontSize: 9, fontFamily: "monospace", color: t.dir === "up" ? "#22c55e" : t.dir === "down" ? "#ef4444" : "var(--text-muted)" }}>
+            {t.delta > 0 ? "+" : ""}{t.delta.toFixed(3)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Sound engine (Web Audio API — no files) ────────────── */
+
+function useGameSounds() {
+  const ctxRef = useRef<AudioContext | null>(null);
+
+  const getCtx = useCallback((): AudioContext | null => {
+    if (typeof window === "undefined") return null;
+    if (!ctxRef.current || ctxRef.current.state === "closed") {
+      ctxRef.current = new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    }
+    if (ctxRef.current.state === "suspended") ctxRef.current.resume();
+    return ctxRef.current;
+  }, []);
+
+  const playHit = useCallback(() => {
+    const ctx = getCtx(); if (!ctx) return;
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(220, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.14);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.16);
+  }, [getCtx]);
+
+  const playCritical = useCallback(() => {
+    const ctx = getCtx(); if (!ctx) return;
+    [0, 0.04].forEach((delay, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(i === 0 ? 380 : 190, ctx.currentTime + delay);
+      osc.frequency.exponentialRampToValueAtTime(55, ctx.currentTime + delay + 0.28);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.30);
+      osc.start(ctx.currentTime + delay); osc.stop(ctx.currentTime + delay + 0.30);
+    });
+  }, [getCtx]);
+
+  const playCombo = useCallback(() => {
+    const ctx = getCtx(); if (!ctx) return;
+    [330, 440, 550].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.09);
+      gain.gain.setValueAtTime(0.09, ctx.currentTime + i * 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.09 + 0.14);
+      osc.start(ctx.currentTime + i * 0.09); osc.stop(ctx.currentTime + i * 0.09 + 0.14);
+    });
+  }, [getCtx]);
+
+  const playKO = useCallback(() => {
+    const ctx = getCtx(); if (!ctx) return;
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(280, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.8);
+    gain.gain.setValueAtTime(0.22, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.85);
+  }, [getCtx]);
+
+  const playVictory = useCallback(() => {
+    const ctx = getCtx(); if (!ctx) return;
+    [523, 659, 784, 1047].forEach((freq, i) => {
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.13);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime + i * 0.13);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.13 + 0.22);
+      osc.start(ctx.currentTime + i * 0.13); osc.stop(ctx.currentTime + i * 0.13 + 0.22);
+    });
+  }, [getCtx]);
+
+  return { playHit, playCritical, playCombo, playKO, playVictory };
+}
+
 /* ─── Hit announcement ───────────────────────────────────── */
 
 function HitAnnouncement({ text, color }: { text: string; color: string }) {
@@ -140,6 +298,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   const { authWs, authStatus } = useWs();
   const { activeAccount } = useAuth();
   const currency = activeAccount?.currency ?? "USD";
+  const sounds = useGameSounds();
 
   const [symbol, setSymbol] = useState(duelConfig?.symbol ?? "R_100");
   const [totalTicks, setTotalTicks] = useState<5 | 10 | 20>(
@@ -156,6 +315,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   const [announcement, setAnnouncement] = useState<{ text: string; color: string } | null>(null);
   const [result, setResult] = useState<FightResult | null>(null);
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [tickHistory, setTickHistory] = useState<TickEntry[]>([]);
 
   // Refs
   const gameStateRef = useRef<GameState>("idle");
@@ -170,6 +330,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   const stakeRef = useRef(10);
   const playerSideRef = useRef<Side>("bull");
   const canvasRef = useRef<CanvasHandle>(null);
+  const contractIdRef = useRef<number | null>(null);
   const announcementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { tick, direction } = useTicks(symbol);
@@ -214,11 +375,39 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
       authWs.send({ buy: prop.id, price: prop.ask_price }, (buyData) => {
         if (buyData.error) {
           setBuyError((buyData.error as { message: string }).message);
+          return;
         }
-        // Contract bought — fight plays out via tick stream
+        const bought = buyData.buy as { contract_id?: number } | undefined;
+        if (bought?.contract_id) contractIdRef.current = bought.contract_id;
       });
     });
   }, [authWs, authStatus, currency]);
+
+  /* ─── Cash Out (sell contract early) ────────────────── */
+
+  const handleCashOut = useCallback(() => {
+    if (!authWs || authStatus !== "connected") return;
+    if (gameStateRef.current !== "live") return;
+    const contractId = contractIdRef.current;
+    if (!contractId) return;
+
+    setGameState("result");
+    gameStateRef.current = "result";
+
+    authWs.send({ sell: contractId, price: 0 }, (sellData) => {
+      const sold = sellData.sell as { sold_for?: number } | undefined;
+      const payout = sold?.sold_for ?? 0;
+      setResult({
+        bullHP: bullHPRef.current,
+        bearHP: bearHPRef.current,
+        winner: bullHPRef.current >= bearHPRef.current ? "bull" : "bear",
+        playerWon: payout > stakeRef.current,
+        buyPrice: stakeRef.current,
+        payout,
+        cashedOut: true,
+      });
+    });
+  }, [authWs, authStatus]);
 
   /* ─── Launch ─────────────────────────────────────────── */
 
@@ -236,12 +425,15 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
     prevQuoteRef.current = null;
     consecutiveDir.current = null;
     consecutiveCount.current = 0;
+    contractIdRef.current = null;
     setBuyError(null);
     setAnnouncement(null);
+    setTickHistory([]);
 
     setGameState("live");
     gameStateRef.current = "live";
 
+    canvasRef.current?.triggerBattleStart();
     buyContract(playerSide, stake, symbol, totalTicks);
   };
 
@@ -291,10 +483,13 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
       setBullHP(newHP);
     }
 
+    // Sync HP to 3D canvas bars
+    canvasRef.current?.updateHP(bullHPRef.current, bearHPRef.current);
+
     // Trigger canvas animation
     if (canvasRef.current && attacker) {
       const impactPoint: [number, number, number] =
-        attacker === "bull" ? [1.5, 1.2, 0] : [-1.5, 1.2, 0];
+        attacker === "bull" ? [2.2, 1.2, 0] : [-2.2, 1.2, 0];
 
       const tickEvent: TickEvent = {
         direction: dir,
@@ -307,13 +502,42 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
       canvasRef.current.triggerTick(tickEvent);
     }
 
-    // Announcements
+    // Push to tick history
+    setTickHistory((prev) => [
+      ...prev,
+      { n: tickCountRef.current + 1, quote: tick.quote, delta, dir },
+    ]);
+
+    // Sounds + announcements
+    const bullColor = "#22c55e";
+    const bearColor = "#ef4444";
     if (isCritical && attacker) {
-      showAnnouncement("⚡ CRITICAL HIT!", attacker === "bull" ? "#22c55e" : "#ef4444");
+      sounds.playCritical();
+      showAnnouncement(
+        pickComment(attacker === "bull" ? COMMENTARY.critBull : COMMENTARY.critBear),
+        attacker === "bull" ? bullColor : bearColor,
+      );
+    } else if (count >= 5 && attacker) {
+      sounds.playCombo();
+      showAnnouncement(
+        pickComment(attacker === "bull" ? COMMENTARY.powerBull : COMMENTARY.powerBear),
+        attacker === "bull" ? bullColor : bearColor,
+      );
     } else if (count === 3 && attacker) {
-      showAnnouncement("💥 COMBO x3!", attacker === "bull" ? "#22c55e" : "#ef4444");
-    } else if (count === 5 && attacker) {
-      showAnnouncement("🔥 POWER COMBO!", attacker === "bull" ? "#22c55e" : "#ef4444");
+      sounds.playCombo();
+      showAnnouncement(
+        pickComment(attacker === "bull" ? COMMENTARY.comboBull : COMMENTARY.comboBear),
+        attacker === "bull" ? bullColor : bearColor,
+      );
+    } else if (attacker) {
+      sounds.playHit();
+    }
+
+    // Low-HP commentary (trigger once when crossing 30%)
+    if (attacker === "bull" && bearHPRef.current <= 30 && bearHPRef.current + damage > 30) {
+      showAnnouncement(pickComment(COMMENTARY.lowHpBear), bearColor);
+    } else if (attacker === "bear" && bullHPRef.current <= 30 && bullHPRef.current + damage > 30) {
+      showAnnouncement(pickComment(COMMENTARY.lowHpBull), bullColor);
     }
 
     const nextCount = tickCountRef.current + 1;
@@ -333,8 +557,10 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
 
       setTimeout(() => {
         canvasRef.current?.triggerKO(winner === "bull" ? "bear" : "bull");
+        sounds.playKO();
         setTimeout(() => {
           canvasRef.current?.triggerVictory(winner);
+          sounds.playVictory();
           const fightResult: FightResult = {
             bullHP: bullHPRef.current,
             bearHP: bearHPRef.current,
@@ -349,7 +575,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
         }, 1500);
       }, 400);
     }
-  }, [tick, showAnnouncement]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tick, showAnnouncement, sounds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Reset ──────────────────────────────────────────── */
 
@@ -366,6 +592,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
     prevQuoteRef.current = null;
     consecutiveDir.current = null;
     consecutiveCount.current = 0;
+    canvasRef.current?.resetArena();
   };
 
   useEffect(() => () => {
@@ -378,62 +605,49 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   /* ─── Idle (Duel mode) ──────────────────────────────────── */
 
   if (gameState === "idle" && duelConfig) {
+    const roleColor = duelConfig.myRole === "bull" ? "#22c55e" : "#ef4444";
     return (
-      <div className="flex flex-col gap-5" style={{ maxWidth: 480 }}>
-        {/* Locked settings summary */}
-        <div
-          style={{
-            padding: "14px 16px",
-            borderRadius: 10,
-            border: "1px solid rgba(20,184,166,0.25)",
-            background: "rgba(20,184,166,0.04)",
-            display: "flex",
-            gap: 24,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", letterSpacing: "0.2em", marginBottom: 4 }}>YOU ARE</div>
-            <div style={{ fontSize: 22 }}>{duelConfig.myRole === "bull" ? "🐂" : "🐻"}</div>
-            <div style={{ fontSize: 11, fontFamily: "monospace", color: duelConfig.myRole === "bull" ? "#22c55e" : "#ef4444" }}>
-              {duelConfig.myRole.toUpperCase()}
+      <div style={{ maxWidth: 540, margin: "0 auto" }}>
+        {/* Hero banner */}
+        <div style={{
+          borderRadius: 16, overflow: "hidden", marginBottom: 20,
+          background: `linear-gradient(135deg, ${roleColor}20 0%, rgba(168,85,247,0.08) 100%)`,
+          border: `1px solid ${roleColor}30`,
+          padding: "28px 24px", textAlign: "center",
+        }}>
+          <div style={{ fontSize: 14, fontFamily: "monospace", letterSpacing: "0.2em", color: roleColor, marginBottom: 8 }}>
+            DUEL MODE
+          </div>
+          <div style={{ fontSize: 28, fontWeight: "bold", color: "#fff", marginBottom: 16 }}>
+            {duelConfig.myRole === "bull" ? "BULL" : "BEAR"}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 32 }}>
+            <div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.15em", marginBottom: 4 }}>MARKET</div>
+              <div style={{ fontSize: 15, fontFamily: "monospace", color: "#fff", fontWeight: "bold" }}>{duelConfig.symbol}</div>
             </div>
-          </div>
-          <div style={{ width: 1, background: "var(--border)", alignSelf: "stretch" }} />
-          <div>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", letterSpacing: "0.2em", marginBottom: 4 }}>MARKET</div>
-            <div style={{ fontSize: 13, fontFamily: "monospace", color: "var(--text-primary)" }}>{duelConfig.symbol}</div>
-          </div>
-          <div style={{ width: 1, background: "var(--border)", alignSelf: "stretch" }} />
-          <div>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", letterSpacing: "0.2em", marginBottom: 4 }}>ROUND</div>
-            <div style={{ fontSize: 13, fontFamily: "monospace", color: "var(--text-primary)" }}>{duelConfig.ticksPerRound} ticks</div>
+            <div style={{ width: 1, background: `${roleColor}40` }} />
+            <div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.15em", marginBottom: 4 }}>ROUND</div>
+              <div style={{ fontSize: 15, fontFamily: "monospace", color: "#fff", fontWeight: "bold" }}>{duelConfig.ticksPerRound} ticks</div>
+            </div>
           </div>
         </div>
 
-        {/* Stake */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>
+        {/* Stake selection */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
             YOUR STAKE ({currency})
-          </span>
-          <div className="flex gap-2">
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             {STAKE_PRESETS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setStake(p)}
-                style={{
-                  flex: 1,
-                  padding: "8px 0",
-                  borderRadius: 6,
-                  border: `1px solid ${stake === p ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                  background: stake === p ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                  color: stake === p ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: 13,
-                  fontFamily: "monospace",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
+              <button key={p} onClick={() => setStake(p)} style={{
+                padding: "14px 0", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                border: `2px solid ${stake === p ? roleColor : "rgba(255,255,255,0.1)"}`,
+                background: stake === p ? `${roleColor}18` : "rgba(255,255,255,0.03)",
+                color: stake === p ? "#fff" : "var(--text-secondary)",
+                fontSize: 18, fontWeight: "bold", fontFamily: "monospace",
+              }}>
                 {p}
               </button>
             ))}
@@ -441,40 +655,27 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
         </div>
 
         {buyError && (
-          <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: 12 }}>
+          <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", fontSize: 12, marginBottom: 16 }}>
             {buyError}
           </div>
         )}
 
         {!canLaunch && (
-          <div style={{ color: "#eab308", fontSize: 11, fontFamily: "monospace" }}>
+          <div style={{ color: "#eab308", fontSize: 12, fontFamily: "monospace", marginBottom: 12, textAlign: "center" }}>
             Connecting to trading server…
           </div>
         )}
 
-        <button
-          onClick={handleLaunch}
-          disabled={!canLaunch}
-          style={{
-            padding: "16px 0",
-            borderRadius: 8,
-            border: "1px solid rgba(20,184,166,0.5)",
-            background: canLaunch ? "rgba(20,184,166,0.1)" : "rgba(255,255,255,0.02)",
-            color: canLaunch ? "var(--accent)" : "var(--text-muted)",
-            fontSize: 14,
-            fontWeight: "bold",
-            fontFamily: "monospace",
-            letterSpacing: "0.15em",
-            cursor: canLaunch ? "pointer" : "not-allowed",
-            opacity: canLaunch ? 1 : 0.45,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            transition: "all 0.2s",
-          }}
-        >
-          <Zap style={{ width: 16, height: 16 }} />
+        <button onClick={handleLaunch} disabled={!canLaunch} style={{
+          width: "100%", padding: "18px 0", borderRadius: 12, cursor: canLaunch ? "pointer" : "not-allowed",
+          border: `2px solid ${roleColor}80`,
+          background: `linear-gradient(135deg, ${roleColor}25 0%, ${roleColor}10 100%)`,
+          color: canLaunch ? "#fff" : "var(--text-muted)",
+          fontSize: 18, fontWeight: "bold", fontFamily: "monospace", letterSpacing: "0.15em",
+          opacity: canLaunch ? 1 : 0.45, display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          transition: "all 0.25s", boxShadow: canLaunch ? `0 4px 20px ${roleColor}30` : "none",
+        }}>
+          <Zap style={{ width: 20, height: 20 }} />
           FIGHT!
         </button>
       </div>
@@ -484,212 +685,164 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   /* ─── Idle (Solo mode) ───────────────────────────────────── */
 
   if (gameState === "idle") {
+    const sideColor = playerSide === "bull" ? "#22c55e" : "#ef4444";
     return (
-      <div className="flex flex-col gap-5" style={{ maxWidth: 520 }}>
-        {/* Symbol */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>
-            MARKET
-          </span>
-          <div className="flex gap-2">
-            {GAME_MARKETS.map((m) => (
-              <button
-                key={m.symbol}
-                onClick={() => setSymbol(m.symbol)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 6,
-                  border: `1px solid ${symbol === m.symbol ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                  background: symbol === m.symbol ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                  color: symbol === m.symbol ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: 12,
-                  fontFamily: "monospace",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
-                {m.label}
+      <div style={{ maxWidth: 580, margin: "0 auto" }}>
+        {/* Hero header */}
+        <div style={{
+          borderRadius: 16, overflow: "hidden", marginBottom: 24,
+          background: "linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(139,92,246,0.05) 100%)",
+          border: "1px solid rgba(168,85,247,0.2)", padding: "24px", textAlign: "center",
+        }}>
+          <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.25em", color: "#a855f7", marginBottom: 6 }}>
+            BEAR VS BULL
+          </div>
+          <div style={{ fontSize: 22, fontWeight: "bold", color: "#fff", marginBottom: 6 }}>
+            Choose Your Fighter
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            3D arena fight powered by live market ticks
+          </div>
+        </div>
+
+        {/* Side selection — big visual cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+          {(["bull", "bear"] as Side[]).map((side) => {
+            const isBull = side === "bull";
+            const c = isBull ? "#22c55e" : "#ef4444";
+            const sel = playerSide === side;
+            return (
+              <button key={side} onClick={() => setPlayerSide(side)} style={{
+                padding: "22px 16px", borderRadius: 14, cursor: "pointer", transition: "all 0.25s",
+                border: `2px solid ${sel ? c + "80" : "rgba(255,255,255,0.08)"}`,
+                background: sel
+                  ? `linear-gradient(135deg, ${c}20 0%, ${c}08 100%)`
+                  : "rgba(255,255,255,0.02)",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                boxShadow: sel ? `0 4px 24px ${c}25` : "none",
+                transform: sel ? "scale(1.02)" : "scale(1)",
+              }}>
+                {isBull
+                  ? <TrendingUp style={{ width: 32, height: 32, color: sel ? "#fff" : c, filter: sel ? `drop-shadow(0 0 8px ${c})` : "none" }} />
+                  : <TrendingDown style={{ width: 32, height: 32, color: sel ? "#fff" : c, filter: sel ? `drop-shadow(0 0 8px ${c})` : "none" }} />
+                }
+                <div style={{ fontSize: 18, fontWeight: "bold", fontFamily: "monospace", color: sel ? "#fff" : "var(--text-secondary)" }}>
+                  {side.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 10, color: sel ? c : "var(--text-muted)", fontFamily: "monospace" }}>
+                  {isBull ? "Price goes UP = you win" : "Price goes DOWN = you win"}
+                </div>
               </button>
-            ))}
+            );
+          })}
+        </div>
+
+        {/* Market selection */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
+            MARKET
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {GAME_MARKETS.map((m) => {
+              const sel = symbol === m.symbol;
+              return (
+                <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
+                  padding: "12px 8px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                  border: `2px solid ${sel ? "#a855f7" + "70" : "rgba(255,255,255,0.08)"}`,
+                  background: sel ? "rgba(168,85,247,0.12)" : "rgba(255,255,255,0.03)",
+                  color: sel ? "#fff" : "var(--text-secondary)",
+                  fontSize: 12, fontFamily: "monospace", fontWeight: sel ? "bold" : "normal",
+                }}>
+                  {m.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Round length */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
             ROUND LENGTH
-          </span>
-          <div className="flex gap-2">
-            {TICK_OPTIONS.map((t) => (
-              <button
-                key={t}
-                onClick={() => setTotalTicks(t)}
-                style={{
-                  flex: 1,
-                  padding: "8px 0",
-                  borderRadius: 6,
-                  border: `1px solid ${totalTicks === t ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                  background: totalTicks === t ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                  color: totalTicks === t ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: 13,
-                  fontFamily: "monospace",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
-                {t} ticks
-              </button>
-            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {TICK_OPTIONS.map((t) => {
+              const sel = totalTicks === t;
+              return (
+                <button key={t} onClick={() => setTotalTicks(t)} style={{
+                  padding: "14px 0", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                  border: `2px solid ${sel ? sideColor + "60" : "rgba(255,255,255,0.08)"}`,
+                  background: sel ? `${sideColor}12` : "rgba(255,255,255,0.03)",
+                  color: sel ? "#fff" : "var(--text-secondary)",
+                  fontSize: 16, fontWeight: "bold", fontFamily: "monospace",
+                }}>
+                  {t}
+                  <span style={{ fontSize: 10, fontWeight: "normal", marginLeft: 4, opacity: 0.7 }}>ticks</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {/* Stake */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
             STAKE ({currency})
-          </span>
-          <div className="flex gap-2">
-            {STAKE_PRESETS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setStake(p)}
-                style={{
-                  flex: 1,
-                  padding: "8px 0",
-                  borderRadius: 6,
-                  border: `1px solid ${stake === p ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                  background: stake === p ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                  color: stake === p ? "var(--accent)" : "var(--text-secondary)",
-                  fontSize: 13,
-                  fontFamily: "monospace",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >
-                {p}
-              </button>
-            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            {STAKE_PRESETS.map((p) => {
+              const sel = stake === p;
+              return (
+                <button key={p} onClick={() => setStake(p)} style={{
+                  padding: "14px 0", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                  border: `2px solid ${sel ? sideColor + "60" : "rgba(255,255,255,0.08)"}`,
+                  background: sel ? `${sideColor}12` : "rgba(255,255,255,0.03)",
+                  color: sel ? "#fff" : "var(--text-secondary)",
+                  fontSize: 18, fontWeight: "bold", fontFamily: "monospace",
+                }}>
+                  {p}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Side selection */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>
-            YOUR SIDE
-          </span>
-          <div className="flex gap-3">
-            <button
-              onClick={() => setPlayerSide("bull")}
-              style={{
-                flex: 1,
-                padding: "16px 0",
-                borderRadius: 8,
-                border: `1px solid ${playerSide === "bull" ? "rgba(34,197,94,0.5)" : "var(--border)"}`,
-                background: playerSide === "bull" ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.02)",
-                color: playerSide === "bull" ? "#22c55e" : "var(--text-secondary)",
-                fontSize: 15,
-                fontWeight: "bold",
-                fontFamily: "monospace",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <TrendingUp style={{ width: 18, height: 18 }} />
-              🐂 BULL
-            </button>
-            <button
-              onClick={() => setPlayerSide("bear")}
-              style={{
-                flex: 1,
-                padding: "16px 0",
-                borderRadius: 8,
-                border: `1px solid ${playerSide === "bear" ? "rgba(239,68,68,0.5)" : "var(--border)"}`,
-                background: playerSide === "bear" ? "rgba(239,68,68,0.1)" : "rgba(255,255,255,0.02)",
-                color: playerSide === "bear" ? "#ef4444" : "var(--text-secondary)",
-                fontSize: 15,
-                fontWeight: "bold",
-                fontFamily: "monospace",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <TrendingDown style={{ width: 18, height: 18 }} />
-              🐻 BEAR
-            </button>
-          </div>
-        </div>
-
-        {/* Info */}
-        <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 6,
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid var(--border)",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            fontFamily: "monospace",
-          }}
-        >
+        {/* Info banner */}
+        <div style={{
+          padding: "12px 16px", borderRadius: 10, marginBottom: 16,
+          background: `${sideColor}10`, border: `1px solid ${sideColor}25`,
+          fontSize: 12, color: sideColor, fontFamily: "monospace", textAlign: "center",
+        }}>
           {playerSide === "bull"
-            ? "🐂 Bull wins if price trends UP across the round — buys a CALL contract"
-            : "🐻 Bear wins if price trends DOWN across the round — buys a PUT contract"}
+            ? "Bull wins if price trends UP — buys a CALL contract"
+            : "Bear wins if price trends DOWN — buys a PUT contract"}
         </div>
 
-        {/* Error */}
         {buyError && (
-          <div
-            style={{
-              padding: "8px 12px",
-              borderRadius: 6,
-              background: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              color: "#ef4444",
-              fontSize: 12,
-            }}
-          >
+          <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", fontSize: 12, marginBottom: 16 }}>
             {buyError}
           </div>
         )}
 
-        {/* Launch */}
         {!canLaunch && (
-          <div style={{ color: "#eab308", fontSize: 11, fontFamily: "monospace" }}>
+          <div style={{ color: "#eab308", fontSize: 12, fontFamily: "monospace", marginBottom: 12, textAlign: "center" }}>
             Connecting to trading server…
           </div>
         )}
 
-        <button
-          onClick={handleLaunch}
-          disabled={!canLaunch}
-          style={{
-            padding: "16px 0",
-            borderRadius: 8,
-            border: "1px solid rgba(20,184,166,0.5)",
-            background: canLaunch ? "rgba(20,184,166,0.1)" : "rgba(255,255,255,0.02)",
-            color: canLaunch ? "var(--accent)" : "var(--text-muted)",
-            fontSize: 14,
-            fontWeight: "bold",
-            fontFamily: "monospace",
-            letterSpacing: "0.15em",
-            cursor: canLaunch ? "pointer" : "not-allowed",
-            opacity: canLaunch ? 1 : 0.45,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            transition: "all 0.2s",
-          }}
-        >
-          <Zap style={{ width: 16, height: 16 }} />
+        <button onClick={handleLaunch} disabled={!canLaunch} style={{
+          width: "100%", padding: "18px 0", borderRadius: 12, cursor: canLaunch ? "pointer" : "not-allowed",
+          border: `2px solid ${sideColor}80`,
+          background: canLaunch
+            ? `linear-gradient(135deg, ${sideColor}25 0%, ${sideColor}10 100%)`
+            : "rgba(255,255,255,0.02)",
+          color: canLaunch ? "#fff" : "var(--text-muted)",
+          fontSize: 18, fontWeight: "bold", fontFamily: "monospace", letterSpacing: "0.15em",
+          opacity: canLaunch ? 1 : 0.45,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          transition: "all 0.25s", boxShadow: canLaunch ? `0 4px 24px ${sideColor}30` : "none",
+        }}>
+          <Zap style={{ width: 20, height: 20 }} />
           FIGHT!
         </button>
       </div>
@@ -777,6 +930,9 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
           <HpBar hp={bearHP} color="#ef4444" label="🐻 BEAR" align="right" />
         </div>
 
+        {/* Live tick feed */}
+        {gameState === "live" && <TickFeed ticks={tickHistory} />}
+
         {/* Center announcement */}
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
@@ -787,17 +943,62 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
           )}
         </div>
 
-        {/* Bottom: result card */}
+        {/* Bottom: cash out button (live) or result card */}
+        {gameState === "live" && (
+          <div
+            className="absolute bottom-0 left-0 right-0 flex items-center justify-between pointer-events-auto"
+            style={{ padding: "12px 20px", background: "rgba(6,11,20,0.75)" }}
+          >
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
+              {playerSide === "bull" ? "🐂 BULL — CALL contract live" : "🐻 BEAR — PUT contract live"}
+            </div>
+            <button
+              onClick={handleCashOut}
+              style={{
+                padding: "10px 20px",
+                borderRadius: 6,
+                border: "1px solid rgba(234,179,8,0.5)",
+                background: "rgba(234,179,8,0.1)",
+                color: "#eab308",
+                fontSize: 12,
+                fontWeight: "bold",
+                fontFamily: "monospace",
+                letterSpacing: "0.1em",
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              💰 CASH OUT
+            </button>
+          </div>
+        )}
+
         {gameState === "result" && result && (
           <div
             className="absolute bottom-0 left-0 right-0 flex flex-col items-center pointer-events-auto"
-            style={{ padding: "16px 20px", background: "rgba(8,13,24,0.9)" }}
+            style={{ padding: "16px 20px", background: "rgba(8,13,24,0.92)" }}
           >
+            {result.cashedOut && (
+              <div
+                style={{
+                  marginBottom: 10,
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  color: "#eab308",
+                  letterSpacing: "0.12em",
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  background: "rgba(234,179,8,0.1)",
+                  border: "1px solid rgba(234,179,8,0.25)",
+                }}
+              >
+                ⚡ CASHED OUT EARLY
+              </div>
+            )}
             <div className="flex items-center gap-8 mb-4">
-              {/* Per-side HP remaining */}
               <div className="flex flex-col items-center gap-1">
                 <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                  BULL HP REMAINING
+                  BULL HP
                 </span>
                 <span style={{ fontSize: 20, fontFamily: "monospace", fontWeight: "bold", color: "#22c55e" }}>
                   {Math.max(0, result.bullHP)}
@@ -805,7 +1006,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
               </div>
               <div className="flex flex-col items-center gap-1">
                 <span style={{ fontSize: 18, fontWeight: "bold", color: result.playerWon ? "#22c55e" : "#ef4444" }}>
-                  {result.winner === "bull" ? "🐂 BULL" : "🐻 BEAR"} WINS
+                  {result.cashedOut ? "CASHED OUT" : `${result.winner === "bull" ? "🐂 BULL" : "🐻 BEAR"} WINS`}
                 </span>
                 <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>
                   You bet on {playerSide === "bull" ? "🐂 BULL" : "🐻 BEAR"}
@@ -813,7 +1014,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
               </div>
               <div className="flex flex-col items-center gap-1">
                 <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                  BEAR HP REMAINING
+                  BEAR HP
                 </span>
                 <span style={{ fontSize: 20, fontFamily: "monospace", fontWeight: "bold", color: "#ef4444" }}>
                   {Math.max(0, result.bearHP)}

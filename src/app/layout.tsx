@@ -3,6 +3,7 @@ import { Inter, Outfit } from "next/font/google";
 import { AuthProvider } from "@/context/AuthContext";
 import { WebSocketProvider } from "@/context/WebSocketContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import NextTopLoader from "nextjs-toploader";
 import "./globals.css";
 
 const inter = Inter({
@@ -38,6 +39,12 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
+        <NextTopLoader
+          color="#14b8a6"
+          height={2}
+          showSpinner={false}
+          shadow="0 0 8px rgba(20,184,166,0.6)"
+        />
         <ThemeProvider>
           <AuthProvider>
             <WebSocketProvider>{children}</WebSocketProvider>

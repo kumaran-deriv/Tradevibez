@@ -249,4 +249,82 @@ Refs are read/written synchronously in effects without re-render cycles or stale
 
 **Tip:** For values that change on every tick but don't need to trigger re-renders (HP refs, combo counts, prev quote, etc.), use refs. Only use state for values that need to update the UI.
 
+## Lesson 23: GLB Models Face Their Own Direction — Check Before Rotating
+
+**What happened:** After loading real GLB models for Bull and Bear, both characters faced outward (away from each other) instead of toward each other. The rotations `[0, -Math.PI/2, 0]` and `[0, +Math.PI/2, 0]` were copied from earlier procedural geometry that had a different local orientation. The signs were simply swapped.
+
+**Why it matters:** Every GLB model has a baked-in facing direction determined at export time. You cannot assume a model faces +Z (the Three.js default "forward"). If the model was exported facing +X, rotating by `-PI/2` sends it backward.
+
+**Tip:** When a GLB character faces the wrong direction, think about which world axis you want it to face, then determine what rotation gets its local +Z there. For a model facing +Z by default: rotate `+PI/2` around Y to face +X (right), `-PI/2` to face -X (left).
+
+---
+
+## Lesson 24: GLTF Materials Are Often Dark — Boost All Lights
+
+**What happened:** Ambient light at `intensity={0.5}` looked fine with procedural `MeshToonMaterial` but made real GLTF models nearly invisible. GLTF materials (especially dark-colored ones like the black bear) absorb a lot of light, and the default R3F ambient intensity is far too low for realistic models.
+
+**Why it matters:** Procedural geometries often use emissive or flat-shaded materials that don't depend heavily on scene lighting. GLTF models from tools like Blender use physically-based materials (PBR) that need proper scene lighting to look correct.
+
+**Tip:** When switching from procedural to GLTF characters, expect to double or triple all light intensities. Start with `ambientLight intensity={2.0}` and a `hemisphereLight` for fill. Tune down from there — it's easier to darken than to figure out why a model is invisible.
+
+---
+
+## Lesson 25: Web Audio API Is Enough for Game Sound Effects
+
+**What happened:** Needed 5 distinct sound effects (hit, critical, combo, KO, victory). External audio files would need hosting + CORS + preloading. Instead, built all sounds using Web Audio API oscillators — synthesized in-process, zero dependencies, zero network requests.
+
+**Why it matters:** For a hackathon, managing 5+ audio files (load states, format compatibility, CORS headers) is a distraction. Oscillator-based synthesis produces surprisingly good results for game sounds and ships in 30 lines of code.
+
+**Tip:** Use Web Audio API for game SFX when you need < 6 simple sounds. `AudioContext.createOscillator()` + `exponentialRampToValueAtTime()` handles hit thuds, sweeps, and fanfares. Only reach for audio files when you need recorded sounds (voice, instruments, ambience).
+
+---
+
+## Lesson 26: `<bufferAttribute>` in R3F Needs `args`, Not Flat Props
+
+**What happened:** Added a procedural starfield using `<bufferAttribute attach="attributes-position" array={positions} count={500} itemSize={3} />`. TypeScript build failed: `Property 'args' is missing in type`.
+
+**Why it matters:** React Three Fiber's JSX elements map props to Three.js constructor calls via the `args` prop. `<bufferAttribute>` is `new THREE.BufferAttribute(array, itemSize)` — so the correct JSX is `<bufferAttribute attach="attributes-position" args={[positions, 3]} />`. The `count` and `itemSize` as separate props are not valid on this element.
+
+**Tip:** Whenever you use a Three.js class in R3F JSX, check the constructor signature. The `args` prop corresponds to constructor arguments in order. Flat property names on the JSX element are for *properties* of the instance (like `.color`, `.intensity`), not constructor parameters.
+
+---
+
+## Lesson 27: Identical Visual Metaphor = Perceived as Betting
+
+**What happened:** Dragon Race (two entities racing, pick the winner) triggered a user question "Isnt this betting?" even though the underlying contract is a standard CALL/PUT — the same as Bear vs Bull which the user approved.
+
+**Why it matters:** Dragon Race looks like horse-race gambling. Bear vs Bull looks like a fight. The **visual metaphor** determines whether users perceive it as gambling or entertainment. Racing = gambling association. Fighting = game association — even though the financial contract is identical.
+
+**Lesson:** When building gamified trading, avoid racing/sports-betting visual metaphors even if the underlying contract is identical to approved games. The framing shapes perception more than the mechanics.
+
+---
+
+---
+
+## Lesson 28: Conditionally-Rendered Canvas Components — Don't Call Refs in Click Handlers
+
+**What happened:** `HexColorFillerCanvas` is only rendered when `gameState === "live"`. The launch button handler called `canvasRef.current?.reset(playerSide)` synchronously. At that point `gameState` was still `"idle"` — the canvas hadn't mounted yet, so `canvasRef.current` was `null`. The `neutralKeys` array was never populated, so `claimHex()` returned on every tick and nothing filled.
+
+**Why it matters:** React state updates are asynchronous — `setGameState("live")` schedules a re-render, it doesn't immediately mount children. Calling an imperative ref method in the same synchronous frame as the state change will always hit a null ref.
+
+**Tip:** When you need to call an imperative handle method immediately after a conditional component mounts, put the call in a `useEffect` watching the state that triggered the mount:
+```typescript
+useEffect(() => {
+  if (gameState === "live") canvasRef.current?.reset(side);
+}, [gameState]);
+```
+React guarantees `useEffect` runs after the DOM is committed and children have mounted.
+
+---
+
+## Lesson 29: Short Room Codes Are Better Than URLs for Human Handoff
+
+**What happened:** Multiplayer duel used a full URL (`?duel={base64json}`). The URL was ~80 characters. Hard to share verbally, breaks on origin change, looks intimidating.
+
+**Why it matters:** Any time two humans need to exchange a code in real time (in-person, voice call, chat), shorter is better. A 6-char alphanumeric code is readable, typeable, and works offline.
+
+**Tip:** Bit-pack your session parameters into a 30-bit integer, encode as base36, display as `XXX YYY` (3+3). For symbol+ticks+timestamp, 30 bits is enough for years of sessions. Keep old URL decode as fallback so existing links don't break.
+
+---
+
 *(More lessons will be added throughout the build)*

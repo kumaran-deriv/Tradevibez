@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * GameLobby — URL-based multiplayer sync.
+ * GameLobby — Room-code-based multiplayer sync.
  *
  * No server state needed. How it works:
  *
- * 1. Host picks settings → generates a shareable URL containing:
- *    symbol, ticks, startAt (Unix timestamp 30s in future)
- * 2. Opponent opens the URL → both clients see an identical countdown
+ * 1. Host picks settings → generates a 6-char alphanumeric room code
+ *    (base36 encoding of symbol + ticks + startAt)
+ * 2. Opponent types the code → both clients see an identical countdown
  * 3. At startAt, BOTH clients subscribe to the same Deriv ticks independently
  *    → same tick stream = identical fight outcome on both screens
  * 4. Each player buys their own Deriv contract (CALL or PUT)
@@ -17,7 +17,7 @@
  */
 
 import { useState } from "react";
-import { Zap, Copy, Check, Users, ExternalLink } from "lucide-react";
+import { Zap, Copy, Check, Users } from "lucide-react";
 
 interface GameLobbyProps {
   /** Called when both host and guest are ready with settings to start fighting */
@@ -39,14 +39,45 @@ const MARKETS = [
 
 const TICK_OPTIONS = [5, 10, 20] as const;
 
-/* ─── Encode / decode config in URL ─────────────────────── */
+/* ─── 6-char room code (base36 bit-pack) ─────────────────── */
 
-function encodeConfig(symbol: string, ticks: number, startAt: number): string {
-  // Short base64-encoded param string
-  const raw = JSON.stringify({ s: symbol, t: ticks, a: startAt });
-  return btoa(raw).replace(/=/g, "");
+const ROOM_SYMBOLS = ["R_100", "R_75", "R_50"];
+const ROOM_TICKS   = [5, 10, 20];
+const EPOCH_SEC    = 1735689600; // Jan 1 2025 UTC
+
+function encodeRoomCode(symbol: string, ticks: number, startAt: number): string {
+  const sIdx      = Math.max(0, ROOM_SYMBOLS.indexOf(symbol));
+  const tIdx      = Math.max(0, ROOM_TICKS.indexOf(ticks));
+  const secOffset = Math.floor(startAt / 1000) - EPOCH_SEC;
+  // Pack: [2b sIdx][2b tIdx][26b secOffset] = 30 bits — fits safely in JS integer
+  const packed = ((sIdx & 0x3) * (1 << 28)) + ((tIdx & 0x3) * (1 << 26)) + (secOffset & 0x3FFFFFF);
+  return packed.toString(36).toUpperCase().padStart(6, "0");
 }
 
+function formatRoomCode(raw: string): string {
+  // Display as "B8H VNK" (3+3)
+  return raw.slice(0, 3) + " " + raw.slice(3, 6);
+}
+
+function decodeRoomCode(input: string): { symbol: string; ticks: number; startAt: number } | null {
+  try {
+    const clean = input.replace(/[\s\-]/g, "").toUpperCase();
+    if (clean.length !== 6) return null;
+    const packed    = parseInt(clean, 36);
+    const sIdx      = Math.floor(packed / (1 << 28)) & 0x3;
+    const tIdx      = Math.floor(packed / (1 << 26)) & 0x3;
+    const secOffset = packed & 0x3FFFFFF;
+    const symbol    = ROOM_SYMBOLS[sIdx];
+    const ticksVal  = ROOM_TICKS[tIdx];
+    if (!symbol || !ticksVal) return null;
+    const startAt = (secOffset + EPOCH_SEC) * 1000;
+    return { symbol, ticks: ticksVal, startAt };
+  } catch {
+    return null;
+  }
+}
+
+// Legacy URL decode (back-compat)
 function decodeConfig(encoded: string): { symbol: string; ticks: number; startAt: number } | null {
   try {
     const padded = encoded + "=".repeat((4 - (encoded.length % 4)) % 4);
@@ -57,32 +88,26 @@ function decodeConfig(encoded: string): { symbol: string; ticks: number; startAt
   }
 }
 
-function buildShareUrl(symbol: string, ticks: number, startAt: number): string {
-  const code = encodeConfig(symbol, ticks, startAt);
-  const base = window.location.origin;
-  return `${base}/games?duel=${code}`;
-}
-
 /* ─── Component ──────────────────────────────────────────── */
 
 export function GameLobby({ onStart }: GameLobbyProps) {
   const [view, setView] = useState<"menu" | "host" | "join">("menu");
   const [symbol, setSymbol] = useState("R_100");
   const [ticks, setTicks] = useState<5 | 10 | 20>(10);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [pendingConfig, setPendingConfig] = useState<DuelConfig | null>(null);
 
-  /* ─── Host: generate link ─────────────────────────── */
+  /* ─── Host: generate room code ───────────────────── */
 
   const handleGenerate = () => {
-    // 45 seconds gives the opponent plenty of time to open the link
+    // 45 seconds gives the opponent plenty of time to enter the code
     const startAt = Date.now() + 45_000;
-    const url = buildShareUrl(symbol, ticks, startAt);
-    setShareUrl(url);
+    const code = encodeRoomCode(symbol, ticks, startAt);
+    setRoomCode(code);
     setPendingConfig({ symbol, ticksPerRound: ticks, startAt, myRole: "bull" });
     startCountdown(startAt);
   };
@@ -107,27 +132,30 @@ export function GameLobby({ onStart }: GameLobbyProps) {
   }
 
   const copy = () => {
-    if (!shareUrl) return;
-    navigator.clipboard.writeText(shareUrl).catch(() => {});
+    if (!roomCode) return;
+    navigator.clipboard.writeText(formatRoomCode(roomCode)).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  /* ─── Guest: parse link ───────────────────────────── */
+  /* ─── Guest: parse code or legacy URL ────────────── */
 
   const handleJoin = () => {
     setJoinError(null);
 
-    // Accept either a full URL or just the duel= param value
-    let code = joinCode.trim();
-    if (code.includes("duel=")) {
-      const m = code.match(/duel=([A-Za-z0-9+/]+)/);
-      code = m ? m[1] : code;
+    const input = joinCode.trim();
+
+    // Try 6-char room code first
+    let decoded = decodeRoomCode(input);
+
+    // Fall back: legacy full URL with ?duel= base64 param
+    if (!decoded && input.includes("duel=")) {
+      const m = input.match(/duel=([A-Za-z0-9+/]+)/);
+      if (m) decoded = decodeConfig(m[1]);
     }
 
-    const decoded = decodeConfig(code);
     if (!decoded) {
-      setJoinError("Invalid code — ask the host to reshare the link.");
+      setJoinError("Invalid code — ask the host for the 6-char room code.");
       return;
     }
 
@@ -219,7 +247,7 @@ export function GameLobby({ onStart }: GameLobbyProps) {
             }}
           >
             {pendingConfig.myRole === "bull"
-              ? "Make sure your opponent has opened the link!"
+              ? "Make sure your opponent has entered the room code!"
               : "Get ready — the fight is about to begin!"}
           </div>
         </div>
@@ -273,7 +301,7 @@ export function GameLobby({ onStart }: GameLobbyProps) {
               fontFamily: "monospace", letterSpacing: "0.1em", cursor: "pointer",
             }}
           >
-            JOIN WITH LINK
+            JOIN WITH CODE
           </button>
         </div>
       )}
@@ -316,41 +344,46 @@ export function GameLobby({ onStart }: GameLobbyProps) {
             </div>
           </div>
 
-          {/* Generated link */}
-          {shareUrl && (
+          {/* Room code */}
+          {roomCode && (
             <div
               style={{
-                padding: "12px", borderRadius: 8,
+                padding: "16px", borderRadius: 8,
                 background: "rgba(20,184,166,0.06)",
-                border: "1px solid rgba(20,184,166,0.2)",
+                border: "1px solid rgba(20,184,166,0.3)",
+                textAlign: "center",
               }}
             >
-              <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", marginBottom: 6, letterSpacing: "0.2em" }}>
-                SHARE THIS WITH YOUR OPPONENT
+              <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", marginBottom: 10, letterSpacing: "0.25em" }}>
+                ROOM CODE — SHARE WITH YOUR OPPONENT
               </div>
-              <div className="flex items-center gap-2">
-                <div
-                  style={{
-                    flex: 1, fontSize: 10, fontFamily: "monospace",
-                    color: "var(--text-secondary)", wordBreak: "break-all",
-                    background: "rgba(0,0,0,0.3)", padding: "6px 8px",
-                    borderRadius: 4,
-                  }}
-                >
-                  {shareUrl}
-                </div>
-                <button onClick={copy} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", flexShrink: 0 }}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              <div className="flex items-center justify-center gap-3">
+                <span style={{
+                  fontSize: 36, fontFamily: "monospace", fontWeight: "bold",
+                  color: "var(--accent)", letterSpacing: "0.2em",
+                  textShadow: "0 0 20px rgba(20,184,166,0.4)",
+                }}>
+                  {formatRoomCode(roomCode)}
+                </span>
+                <button onClick={copy} style={{
+                  background: copied ? "rgba(20,184,166,0.15)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${copied ? "rgba(20,184,166,0.4)" : "var(--border)"}`,
+                  borderRadius: 6, cursor: "pointer", color: copied ? "var(--accent)" : "var(--text-muted)",
+                  padding: "8px 10px", display: "flex", alignItems: "center", gap: 4,
+                  fontSize: 11, fontFamily: "monospace",
+                }}>
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? "COPIED" : "COPY"}
                 </button>
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
-                They open the link → fight starts in {Math.ceil((pendingConfig?.startAt ?? 0 - Date.now()) / 1000)}s
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 10, fontFamily: "monospace" }}>
+                Opponent types this code → fight starts when timer hits 0
               </div>
             </div>
           )}
 
           <div className="flex gap-2">
-            <button onClick={() => { setView("menu"); setShareUrl(null); }} style={{
+            <button onClick={() => { setView("menu"); setRoomCode(null); }} style={{
               flex: 1, padding: "10px", borderRadius: 6, border: "1px solid var(--border)",
               background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer",
             }}>
@@ -363,8 +396,8 @@ export function GameLobby({ onStart }: GameLobbyProps) {
               fontFamily: "monospace", cursor: "pointer", display: "flex",
               alignItems: "center", justifyContent: "center", gap: 6,
             }}>
-              <ExternalLink style={{ width: 13, height: 13 }} />
-              {shareUrl ? "Regenerate Link" : "Generate Link"}
+              <Zap style={{ width: 13, height: 13 }} />
+              {roomCode ? "Regenerate Code" : "Generate Code"}
             </button>
           </div>
         </div>
@@ -374,20 +407,27 @@ export function GameLobby({ onStart }: GameLobbyProps) {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace", letterSpacing: "0.2em" }}>
-              PASTE THE LINK OR CODE
+              ENTER ROOM CODE
             </span>
-            <textarea
+            <input
+              type="text"
               value={joinCode}
-              onChange={(e) => { setJoinCode(e.target.value); setJoinError(null); }}
-              placeholder="https://tradevibez.vercel.app/games?duel=..."
-              rows={3}
+              onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null); }}
+              placeholder="B8H VNK"
+              maxLength={7}
+              autoComplete="off"
+              spellCheck={false}
               style={{
-                width: "100%", padding: "10px", borderRadius: 6, fontSize: 11,
+                width: "100%", padding: "14px 16px", borderRadius: 6, fontSize: 22,
                 fontFamily: "monospace", background: "rgba(255,255,255,0.04)",
                 border: `1px solid ${joinError ? "rgba(239,68,68,0.4)" : "var(--border)"}`,
-                color: "var(--text-primary)", outline: "none", resize: "none",
+                color: "var(--text-primary)", outline: "none",
+                textAlign: "center", letterSpacing: "0.3em", fontWeight: "bold",
               }}
             />
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "monospace", textAlign: "center" }}>
+              Ask your opponent for their 6-char room code
+            </span>
           </div>
 
           {joinError && (

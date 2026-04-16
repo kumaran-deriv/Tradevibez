@@ -723,3 +723,124 @@ Production URL: https://tradevibez.netlify.app — `/games` page live alongside 
 **Files touched:** `BearVsBullGame.tsx`, `games/page.tsx`, `redis.ts`, 2 API routes
 
 ---
+
+### Interaction 38: GLTF Character Visual Fixes
+**Prompt:** "It is so dark and the characters are not visible properly .. Bull is so large and characters seem to be facing opposite direction.."
+**Outcome:** Three targeted fixes in `BearVsBullCanvas.tsx`:
+1. **Lighting** — `ambientLight` raised from `0.5` to `2.0`, added `hemisphereLight` sky/ground fill, boosted all directional and point lights substantially
+2. **Bull scale** — reduced `<primitive scale>` from `1.8` → `0.9`, then further to `0.58` after follow-up feedback ("can be shrunk a bit more")
+3. **Rotations** — Bull was `rotation={[0, -Math.PI/2, 0]}` (facing away); flipped to `+Math.PI/2` so it faces the bear. Bear was `+Math.PI/2` (facing away); flipped to `-Math.PI/2`.
+4. **Bear scale** — bumped from `0.18` → `0.22` to better match bull's reduced size
+
+**Root cause of rotation bug:** GLB models have their own "default facing" direction baked in at export. Bull faces +Z by default; rotating `-PI/2` turned it to face -X (away from bear). The correct rotation to face +X toward the bear is `+PI/2`. Both characters needed opposite signs to face each other.
+
+**Build:** Clean, 0 errors.
+**Files touched:** `BearVsBullCanvas.tsx`
+
+---
+
+### Interaction 39: Sound Effects + Live Tick Feed
+**Prompt:** "I need to test the multiplayer one. Will test it later. 2 more requests: 1) Can we add some sounds — Mild 2) We need to show the ticks so user knows the truth"
+**Outcome:**
+
+**Sounds** — `useGameSounds()` hook using Web Audio API oscillators (no external audio files):
+- Normal hit: 220Hz → 80Hz exponential decay (short thud)
+- Critical hit: dual sawtooth burst, louder and longer
+- Combo: ascending 3-note melody (330 → 440 → 550Hz) using triangle wave
+- KO: descending sawtooth sweep (280Hz → 35Hz, 0.85s)
+- Victory: 4-note sine fanfare (C5, E5, G5, C6)
+Sounds are called at the right game moments: hit/critical/combo on each tick, KO when HP reaches 0, victory after the loser animation.
+
+**Live tick feed** — `TickFeed` component overlaid top-right of the arena during live fights:
+- Shows last 8 ticks (older ones fade to 25% opacity)
+- Each row: tick number, exact price (2dp), direction arrow (▲/▼), signed delta (+0.234)
+- Color-coded green/red per direction — matches the fight outcome color coding
+- Proves to users that fight results are driven by real Deriv price data, not randomness
+- Hidden during idle/result states; only visible during live fight
+
+**Build:** Clean, 0 errors.
+**Files touched:** `BearVsBullGame.tsx` (hook + state + render), no canvas changes
+
+---
+
+### Interaction 40: Price Sniper + Chart Surfer Rejected — Two New 3D Games
+**Prompt:** "Games are not good. It needs to be in 3D and is not easily understandable"
+**Clarification answers:**
+- Replace with entirely new 3D game ideas (not redesign existing ones)
+- Problems: looks like a trading chart not a game, action unclear, connection to trading confusing
+
+**User follow-up:** "Isnt both the games like betting?" → discussed that all prediction-based options trading has this quality; Deriv contracts are regulated financial instruments; user confirmed "Build the 3D games anyway"
+
+**Outcome:** Replaced both Canvas 2D games with React Three Fiber 3D games:
+
+**☄️ Meteor Blaster** (replaces Price Sniper) — ONETOUCH contract:
+- 3D space scene: glowing orange meteor drifts up/down with live ticks; green upper ring + red lower ring float in space at barrier price levels
+- Player picks AIM UP or AIM DOWN, sets stake, hits FIRE
+- Buys `contract_type: "ONETOUCH"` with `barrier = anchorPrice ± adaptive_offset`
+- Offset calibrated from idle tick buffer (ATR × 4); contract subscription starts immediately after buy
+- If price touches barrier: ring explosion (Sparkles burst) + camera shake = WIN
+- After 10 ticks without touching: rings dim = LOSE
+- Files: `MeteorBlasterCanvas.tsx` (R3F), `MeteorBlasterGame.tsx` (game logic)
+
+**🐉 Dragon Race** (replaces Chart Surfer) — CALL/PUT contract:
+- 3D racetrack with two dragon shapes (Gold left lane, Purple right lane), glowing finish gate at Z=12
+- UP tick → Gold Dragon surges forward (burst particles); DOWN tick → Purple Dragon surges forward
+- Surge magnitude proportional to tick size (`mag = min(|delta| × 14 + 0.35, 2.8)` world units)
+- Player bets on Gold (CALL) or Purple (PUT) before race; contract bought at START RACE
+- After 10 ticks, winner dragon triggers finish explosion + camera shake; GameResult shown 2.2s later
+- Dragon progress bars as HUD overlay, tick feed shown during race
+- Files: `DragonRaceCanvas.tsx` (R3F), `DragonRaceGame.tsx` (game logic)
+
+**`games/page.tsx`:** `SoloGameId` type updated; `price-sniper`/`chart-surfer` entries replaced with `meteor-blaster`/`dragon-race`; old imports/render branches swapped. Old files deleted.
+
+**TypeScript fix:** `<bufferAttribute>` in R3F requires `args={[array, itemSize]}` — flat `array={}` + `count={}` + `itemSize={}` props are not valid; `args` maps to the `THREE.BufferAttribute` constructor signature.
+
+**Build:** Clean pass, 0 errors. `/games` 24.1KB.
+**Files touched:** 4 new files, `games/page.tsx` updated, `PriceSniperGame.tsx` + `ChartSurferGame.tsx` deleted
+
+---
+
+## Phase 8: New Games + Multiplayer Room Code
+
+### Interaction: Three New Features Request
+**Prompt:** "Add game color filler .. It is 2D and a big hexogone has small hexogons like honey comb .. Based on tick flow Red or green will fill and at the end of session comb with most color wins.. Min 40 ticks / Music generator game.. A simple piano with notes which creates actual music based on the tick flow.. Users need to predict major or minor wins but they get to play the music at the end of round based on the ticks / For multiplayer game link is not generated.. I think if the link is going to be constant for most part we can generate a code and that code can be typed on the other screen and they can play"
+
+**Clarifications asked (via options):**
+- Hex fill direction → Random spread
+- Music bet type → HARMONY vs DISCORD
+- Room code length → 6-char alphanumeric
+
+**Outcome:**
+
+**🍯 Hex Color Filler** — `HexColorFillerCanvas.tsx` + `HexColorFillerGame.tsx`
+- Canvas 2D, 600×520px. Hex grid radius 4 = 61 pointy-top hexagons, hex size 36px, centered
+- Each UP tick claims a random neutral hex → green; each DOWN tick → red
+- Neutral list pre-shuffled on mount; `pop()` = O(1) random claim without re-shuffling
+- Hex fill animated: `anim` 0→1 over dt×5, drawn as scaled inner hex path
+- Particle burst (8 particles) on each claim; winner hexes burst on end
+- Progress bar at canvas bottom: green / red / neutral segments + count labels
+- Game: 40 or 60 tick options, GREEN (CALL) or RED (PUT) bet, 1.85× payout
+- StreakBadge shows consecutive same-direction streaks ≥ 2
+- **Bug fixed post-review:** `neutralKeys` empty on first play — `canvasRef.current` null when `reset()` called synchronously in click handler. Fix: canvas calls `rebuild()` on mount; game calls `reset` in a `useEffect` watching `gameState`
+
+**🎹 Market Melody** — `MusicPianoCanvas.tsx` + `MusicPianoGame.tsx`
+- Canvas 2D, 600×420px. Top 220px = scrolling note roll; bottom 200px = piano keyboard
+- Pentatonic C major scale: C4 D4 E4 G4 A4 C5 D5 E5 G5 A5 C6 (11 notes, start at C5)
+- UP tick = +1 note index, DOWN tick = -1, clamped [0,10]
+- Note roll: colored dots (cool blue=low → warm gold=high) scroll right-to-left with glow
+- Piano: 15 white keys + 10 black keys; active key glows green
+- Web Audio API `triangle` oscillator plays each note live; `playMelodyReplay()` replays full melody at round end
+- Game: 20/30/40 tick options, HARMONY (CALL) vs DISCORD (PUT) bet
+
+**🔑 Multiplayer Room Code** — `GameLobby.tsx` updated
+- Replaced full URL sharing with 6-char base36 room code (e.g. `B8H VNK`)
+- Bit-pack: `sIdx (2b) + tIdx (2b) + secOffset (26b) = 30 bits` → `.toString(36).toUpperCase().padStart(6,'0')`
+- Host: big prominent code display + COPY button; Join: single clean input, no textarea
+- Back-compat: `handleJoin` still accepts legacy `?duel=` base64 URLs
+
+**`games/page.tsx`:** Added `hex-color-filler` and `music-piano` to `SOLO_GAMES`; type and render switch updated.
+
+**Build:** `npx tsc --noEmit` clean.
+**Files:** 4 created, `GameLobby.tsx` + `games/page.tsx` updated.
+
+---
