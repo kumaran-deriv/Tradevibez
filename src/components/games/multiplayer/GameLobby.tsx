@@ -178,10 +178,11 @@ export function GameLobby({ onStart }: GameLobbyProps) {
   /* ─── Countdown view (both host + guest) ─────────── */
 
   if (countdown !== null && countdown > 0 && pendingConfig) {
+    const roleColor = pendingConfig.myRole === "bull" ? "#22c55e" : "#ef4444";
     return (
       <div
         style={{
-          maxWidth: 380,
+          maxWidth: 400,
           padding: "28px",
           borderRadius: 12,
           border: "1px solid var(--border)",
@@ -189,6 +190,37 @@ export function GameLobby({ onStart }: GameLobbyProps) {
         }}
       >
         <div className="flex flex-col items-center gap-3 text-center">
+          {/* Show room code prominently for host */}
+          {pendingConfig.myRole === "bull" && roomCode && (
+            <div style={{
+              width: "100%", padding: "14px", borderRadius: 8, marginBottom: 4,
+              background: "rgba(20,184,166,0.06)", border: "1px solid rgba(20,184,166,0.3)",
+            }}>
+              <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "monospace", letterSpacing: "0.25em", marginBottom: 8 }}>
+                ROOM CODE — SHARE WITH OPPONENT
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <span style={{
+                  fontSize: 32, fontFamily: "monospace", fontWeight: "bold",
+                  color: "var(--accent)", letterSpacing: "0.2em",
+                  textShadow: "0 0 20px rgba(20,184,166,0.4)",
+                }}>
+                  {formatRoomCode(roomCode)}
+                </span>
+                <button onClick={copy} style={{
+                  background: copied ? "rgba(20,184,166,0.15)" : "rgba(255,255,255,0.05)",
+                  border: `1px solid ${copied ? "rgba(20,184,166,0.4)" : "var(--border)"}`,
+                  borderRadius: 6, cursor: "pointer", color: copied ? "var(--accent)" : "var(--text-muted)",
+                  padding: "6px 8px", display: "flex", alignItems: "center", gap: 4,
+                  fontSize: 10, fontFamily: "monospace",
+                }}>
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? "COPIED" : "COPY"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div
             style={{
               fontSize: 10,
@@ -221,7 +253,7 @@ export function GameLobby({ onStart }: GameLobbyProps) {
                 style={{
                   fontSize: 10,
                   fontFamily: "monospace",
-                  color: pendingConfig.myRole === "bull" ? "#22c55e" : "#ef4444",
+                  color: roleColor,
                 }}
               >
                 {pendingConfig.myRole.toUpperCase()}
@@ -247,7 +279,7 @@ export function GameLobby({ onStart }: GameLobbyProps) {
             }}
           >
             {pendingConfig.myRole === "bull"
-              ? "Make sure your opponent has entered the room code!"
+              ? "Share the room code with your opponent before time runs out!"
               : "Get ready — the fight is about to begin!"}
           </div>
         </div>

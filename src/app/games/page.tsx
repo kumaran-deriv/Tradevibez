@@ -3,29 +3,31 @@
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/Button";
-import { RiseFallGame } from "@/components/games/RiseFallGame";
-import { DigitsGame } from "@/components/games/DigitsGame";
-import { ChainReactionGame } from "@/components/games/ChainReactionGame";
 import { BearVsBullGame } from "@/components/games/BearVsBullGame";
-import { TickPlinkoGame } from "@/components/games/TickPlinkoGame";
 import { MeteorBlasterGame } from "@/components/games/MeteorBlasterGame";
-import { DragonRaceGame } from "@/components/games/DragonRaceGame";
+import { GrandPrixGame } from "@/components/games/GrandPrixGame";
 import { HexColorFillerGame } from "@/components/games/HexColorFillerGame";
 import { MusicPianoGame } from "@/components/games/MusicPianoGame";
+import { VaultHeistGame } from "@/components/games/VaultHeistGame";
+import { PenaltyShootoutGame } from "@/components/games/PenaltyShootoutGame";
+import { TidalSurgeGame } from "@/components/games/TidalSurgeGame";
+import { DigitOracleGame } from "@/components/games/DigitOracleGame";
+import { TickPlinkoGame } from "@/components/games/TickPlinkoGame";
 import { GameLobby } from "@/components/games/multiplayer/GameLobby";
 import type { DuelConfig } from "@/components/games/multiplayer/GameLobby";
 import { useAuth } from "@/context/AuthContext";
 import {
   Lock, Gamepad2, Users, ChevronLeft,
-  Swords, Flame, Crosshair, Target, Palette, Music,
-  Zap, TrendingUp, Hash, Flag, Globe,
+  Swords, Crosshair, Palette, Music,
+  Waves, Sparkles as SparklesIcon, Target, Flag, Globe, CircleDot,
+  Flame,
   type LucideIcon,
 } from "lucide-react";
 
 /* ─── Game definitions ───────────────────────────────────── */
 
-type SoloGameId = "rise-fall" | "digits" | "chain-reaction" | "bear-vs-bull" | "tick-plinko" | "meteor-blaster" | "dragon-race" | "hex-color-filler" | "music-piano";
-type GroupGameId = "bear-vs-bull-duel" | "chain-race" | "market-battle";
+type SoloGameId = "vault-heist" | "penalty-shootout" | "tidal-surge" | "digit-oracle" | "bear-vs-bull" | "meteor-blaster" | "grand-prix" | "hex-color-filler" | "music-piano" | "tick-plinko";
+type GroupGameId = "bear-vs-bull-duel" | "chain-race" | "market-battle" | "tick-boxing";
 
 interface SoloGame {
   id: SoloGameId;
@@ -55,27 +57,27 @@ const SOLO_GAMES: SoloGame[] = [
     new: true,
   },
   {
-    id: "dragon-race",
-    icon: Flame,
-    label: "Dragon Race",
-    tagline: "Pick your dragon · Ticks power the race",
-    accent: "#f97316",
-    new: true,
-  },
-  {
-    id: "meteor-blaster",
-    icon: Crosshair,
-    label: "Meteor Blaster",
-    tagline: "Aim the ring · ONETOUCH wins if meteor hits",
-    accent: "#ef4444",
+    id: "vault-heist",
+    icon: Lock,
+    label: "Vault Heist",
+    tagline: "Crack the vault with perfect predictions",
+    accent: "#d4a017",
     new: true,
   },
   {
     id: "tick-plinko",
-    icon: Target,
+    icon: CircleDot,
     label: "Tick Plinko",
-    tagline: "Market steers the ball · Slot multiplier is your payout",
-    accent: "#8b5cf6",
+    tagline: "Drop a ball · Ticks choose the path · Hit the multiplier",
+    accent: "#14b8a6",
+    new: true,
+  },
+  {
+    id: "penalty-shootout",
+    icon: Target,
+    label: "Penalty Shootout",
+    tagline: "5 kicks · Predict odd or even · Score goals",
+    accent: "#22c55e",
     new: true,
   },
   {
@@ -95,25 +97,36 @@ const SOLO_GAMES: SoloGame[] = [
     new: true,
   },
   {
-    id: "chain-reaction",
-    icon: Zap,
-    label: "Chain Reaction",
-    tagline: "10 ticks · 3 cells · Light them up",
-    accent: "#14b8a6",
+    id: "tidal-surge",
+    icon: Waves,
+    label: "Tidal Surge",
+    tagline: "Ride the market waves · Predict the tide",
+    accent: "#06b6d4",
+    new: true,
   },
   {
-    id: "rise-fall",
-    icon: TrendingUp,
-    label: "Rise or Fall",
-    tagline: "Predict the next tick direction",
-    accent: "#22c55e",
+    id: "digit-oracle",
+    icon: SparklesIcon,
+    label: "Digit Oracle",
+    tagline: "The crystal ball reveals the last digit",
+    accent: "#a855f7",
+    new: true,
   },
   {
-    id: "digits",
-    icon: Hash,
-    label: "Guess the Digit",
-    tagline: "Nail the last digit of the price",
+    id: "grand-prix",
+    icon: Flag,
+    label: "Grand Prix",
+    tagline: "Pick your car · Ticks power the race",
     accent: "#f97316",
+    new: true,
+  },
+  {
+    id: "meteor-blaster",
+    icon: Crosshair,
+    label: "Pressure Blaster",
+    tagline: "Crash/Boom pressure chamber — will it detonate?",
+    accent: "#ef4444",
+    new: true,
   },
 ];
 
@@ -140,6 +153,14 @@ const GROUP_GAMES: GroupGame[] = [
     label: "Market Battle",
     tagline: "5 players · 5 symbols · Best % return wins",
     accent: "#3b82f6",
+    comingSoon: true,
+  },
+  {
+    id: "tick-boxing",
+    icon: Flame,
+    label: "Tick Boxing",
+    tagline: "Trade punches round by round · Ticks decide the knockout",
+    accent: "#f43f5e",
     comingSoon: true,
   },
 ];
@@ -527,15 +548,16 @@ export default function GamesPage() {
           <span style={{ color: game.accent }}>{game.label}</span>
         </button>
 
-        {activeSoloGame === "rise-fall" && <RiseFallGame />}
-        {activeSoloGame === "digits" && <DigitsGame />}
-        {activeSoloGame === "chain-reaction" && <ChainReactionGame />}
         {activeSoloGame === "bear-vs-bull" && <BearVsBullGame />}
-        {activeSoloGame === "tick-plinko" && <TickPlinkoGame />}
         {activeSoloGame === "meteor-blaster" && <MeteorBlasterGame />}
-        {activeSoloGame === "dragon-race" && <DragonRaceGame />}
+        {activeSoloGame === "grand-prix" && <GrandPrixGame />}
         {activeSoloGame === "hex-color-filler" && <HexColorFillerGame />}
         {activeSoloGame === "music-piano" && <MusicPianoGame />}
+        {activeSoloGame === "vault-heist" && <VaultHeistGame />}
+        {activeSoloGame === "penalty-shootout" && <PenaltyShootoutGame />}
+        {activeSoloGame === "tidal-surge" && <TidalSurgeGame />}
+        {activeSoloGame === "digit-oracle" && <DigitOracleGame />}
+        {activeSoloGame === "tick-plinko" && <TickPlinkoGame />}
       </DashboardLayout>
     );
   }

@@ -29,9 +29,14 @@ const BearVsBullCanvas = dynamic(() => import("./BearVsBullCanvas"), {
 /* ─── Constants ──────────────────────────────────────────── */
 
 const GAME_MARKETS = [
-  { symbol: "R_100", label: "Volatility 100" },
-  { symbol: "R_75",  label: "Volatility 75"  },
-  { symbol: "R_50",  label: "Volatility 50"  },
+  { symbol: "R_100",   label: "Volatility 100" },
+  { symbol: "R_75",    label: "Volatility 75"  },
+  { symbol: "R_50",    label: "Volatility 50"  },
+  { symbol: "1HZ100V", label: "Vol 100 (1s)"   },
+  { symbol: "1HZ75V",  label: "Vol 75 (1s)"    },
+  { symbol: "1HZ50V",  label: "Vol 50 (1s)"    },
+  { symbol: "1HZ25V",  label: "Vol 25 (1s)"    },
+  { symbol: "1HZ10V",  label: "Vol 10 (1s)"    },
 ];
 
 const TICK_OPTIONS = [5, 10, 20] as const;
@@ -330,6 +335,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   const stakeRef = useRef(10);
   const playerSideRef = useRef<Side>("bull");
   const canvasRef = useRef<CanvasHandle>(null);
+  const needsCanvasReset = useRef(false);
   const contractIdRef = useRef<number | null>(null);
   const announcementTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -340,6 +346,14 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
   useEffect(() => { totalTicksRef.current = totalTicks; }, [totalTicks]);
   useEffect(() => { stakeRef.current = stake; }, [stake]);
   useEffect(() => { playerSideRef.current = playerSide; }, [playerSide]);
+
+  const onCanvasReady = useCallback((handle: CanvasHandle | null) => {
+    (canvasRef as React.MutableRefObject<CanvasHandle | null>).current = handle;
+    if (handle && needsCanvasReset.current) {
+      needsCanvasReset.current = false;
+      handle.triggerBattleStart();
+    }
+  }, []);
 
   /* ─── Show announcement ──────────────────────────────── */
 
@@ -433,7 +447,11 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
     setGameState("live");
     gameStateRef.current = "live";
 
-    canvasRef.current?.triggerBattleStart();
+    needsCanvasReset.current = true;
+    if (canvasRef.current) {
+      canvasRef.current.triggerBattleStart();
+      needsCanvasReset.current = false;
+    }
     buyContract(playerSide, stake, symbol, totalTicks);
   };
 
@@ -742,16 +760,16 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
           <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
             MARKET
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {GAME_MARKETS.map((m) => {
               const sel = symbol === m.symbol;
               return (
                 <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
-                  padding: "12px 8px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                  padding: "8px 6px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
                   border: `2px solid ${sel ? "#a855f7" + "70" : "rgba(255,255,255,0.08)"}`,
                   background: sel ? "rgba(168,85,247,0.12)" : "rgba(255,255,255,0.03)",
                   color: sel ? "#fff" : "var(--text-secondary)",
-                  fontSize: 12, fontFamily: "monospace", fontWeight: sel ? "bold" : "normal",
+                  fontSize: 11, fontFamily: "monospace", fontWeight: sel ? "bold" : "normal",
                 }}>
                   {m.label}
                 </button>
@@ -858,7 +876,7 @@ export function BearVsBullGame({ duelConfig }: { duelConfig?: DuelConfig } = {})
     >
       {/* 3D Canvas fills entire container */}
       <div className="absolute inset-0">
-        <BearVsBullCanvas ref={canvasRef} />
+        <BearVsBullCanvas ref={onCanvasReady} />
       </div>
 
       {/* HUD overlay */}

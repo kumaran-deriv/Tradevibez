@@ -445,3 +445,176 @@ Host generated `{origin}/games?duel={base64json}`. Guest pasted the full URL. Pr
 Bit-pack `symbolIdx (2 bits) + ticksIdx (2 bits) + secondsSinceEpoch (26 bits)` = 30 bits. `.toString(36).toUpperCase().padStart(6,'0')`. Display as `B8H VNK` (3+3 split). Max encodable value = ~738M, well within 36^6 = 2.18B.
 
 Benefits: memorable, easy to read aloud, no URL dependency, decodes deterministically on any client. Kept legacy base64 URL decode as fallback for back-compat.
+
+---
+
+## Phase 9: Four Game Replacements — Old Games Out, New Games In
+
+### Context
+Four original games felt dated or lacked graphical punch. Replaced all four with new concepts that have rich canvas scenes, tick data feeds, and early cash-out. Built using parallel background agents for speed.
+
+---
+
+### Vault Heist (replaces Chain Reaction)
+
+#### Before: Chain Reaction
+Text-based chain reaction game. Predict consecutive tick directions. No canvas. No visual excitement.
+
+#### After: Vault Heist
+2D Canvas (600×520) vault-cracking game. Player predicts a sequence of UP/DOWN tick directions to crack a vault. Grouped into sets — completing each set unlocks partial payout with cash-out option.
+
+**Canvas:** Dark metallic vault door with gold radial glow, lock tumblers (pending → active → correct/wrong states), progressive vault crack animation, particle system (green/gold sparks on correct, red on alarm).
+
+**Game logic:** Difficulty selector (3/4/5 locks), prediction sequence builder (row of UP/DOWN toggles), set-based progress with early cash-out between sets. Contract: single CALL with `duration: difficulty, duration_unit: "t"`. Multipliers: Set 1 = 1.5×, All correct = 3× (or 6× for 5 locks).
+
+**Takeaway:** A vault-cracking metaphor maps naturally to sequential prediction — each tumbler = one tick direction. The cash-out between sets gives the player a meaningful "risk vs reward" moment that doesn't exist in a simple bet.
+
+---
+
+### Penalty Shootout (replaces Tick Plinko)
+
+#### Before: Tick Plinko
+Ball drops through a plinko board. Mostly passive — player watches, doesn't interact per tick.
+
+#### After: Penalty Shootout
+3D Three.js penalty kick scene. 5 kicks, each a DIGITEVEN/DIGITODD 1-tick contract bought sequentially. Correct prediction = GOAL, wrong = SAVE.
+
+**Canvas:** Goal posts (white box geometry) + net, ball animation toward goal, goalkeeper dive (box-based humanoid), stadium lights, drei Text scoreboard, Sparkles particles for celebrations.
+
+**Game logic:** 5 ODD/EVEN toggle slots, sequential contract buying (one per kick, wait for tick, resolve, buy next). Multipliers: 0–2 goals = 0×, 3 goals = 1.5×, 4 = 3×, 5 = 8×. Tick feed visible during live play. Early cash-out available.
+
+**Takeaway:** Sequential per-kick contracts create a natural rhythm. Each kick is independently resolved — the player sees their prediction tested in real time rather than watching a bulk result.
+
+---
+
+### Tidal Surge (replaces Rise/Fall)
+
+#### Before: Rise/Fall
+Functional but text-heavy. No canvas scene. Direction prediction with countdown timer.
+
+#### After: Tidal Surge
+2D Canvas (700×480) ocean scene. Same CALL/PUT time-based contract mechanics as Rise/Fall, but with animated ocean waves, ship, moon, and profit zones.
+
+**Canvas:** Starfield, moon with glow, 4-layer parallax wave system, animated ship on wave surface, profit zone bands, countdown arc. Wave Y-position responds to price delta vs entry price. Win: golden sunrise + confetti. Loss: storm + lightning flash.
+
+**Design decision:** User explicitly rejected the originally planned "Rocket Rise" concept ("Instead of rocket plan something else"). Ocean/wave metaphor is a natural fit for rise/fall market movement — tides rise and fall, prices rise and fall.
+
+**Game logic:** CALL/PUT with time duration (5s/15s/30s/1m). Markets: R_100, R_75, R_50, R_25, frxEURUSD, frxGBPUSD. Live HUD: prediction badge, entry vs current price, countdown timer, CASH OUT EARLY button, tick feed.
+
+**Takeaway:** The visual metaphor matters more than the contract type. A rocket "rising" felt forced; an ocean tide "rising and falling" is an intuitive match. Always let the metaphor serve the mechanic, not the other way around.
+
+---
+
+### Digit Oracle (replaces Guess the Digit)
+
+#### Before: Guess the Digit
+Functional digit prediction. No 3D scene. Grid-based last-digit display.
+
+#### After: Digit Oracle
+3D Three.js crystal ball scene. Same DIGIT* contracts as the original, but with mystical visual theme.
+
+**Canvas:** Crystal ball (meshPhysicalMaterial, transmission 0.6), gold ornate base, inner glow sphere, digit text display (drei Text) that spins during processing, score gems orbiting the ball, golden burst on match, dark smoke on miss. Purple/indigo ambient lighting.
+
+**Game logic:** Mode selector (Even/Odd vs Match Digit), digit picker grid (0–9 for match mode), tick durations (5 or 10 ticks). Markets: R_100, R_75, R_50, R_25, R_10. Live HUD: prediction label, hits/misses score, tick dots, CASH OUT EARLY, tick feed.
+
+**Takeaway:** Wrapping the same contract logic in a visually compelling 3D scene transforms a mundane number-guessing game into something judges will remember. The crystal ball metaphor ("oracle reveals the digit") adds narrative to what is otherwise just watching numbers.
+
+---
+
+### Cross-Cutting: Tick Data Feed + Early Cash-Out
+
+#### Before
+Original games had no visible tick data and no early exit option.
+
+#### After
+All 9 solo games now show a live tick data feed during play (scrolling list of prices with timestamps and direction arrows). All games with time-based contracts support early cash-out via `authWs.send({ sell: contractId, price: 0 })`.
+
+**Rationale:** User requirement — "Show ticks data for source of truth and early payout option in all the games so it is close to trading." The tick feed establishes trust that game outcomes are driven by real market data, not RNG. Early cash-out is a core trading mechanic that differentiates these games from pure gambling.
+
+---
+
+### Agent Crash Recovery
+
+Two of four parallel background agents crashed mid-execution with "socket connection was closed unexpectedly." Each agent had completed the Canvas file but not the Game file.
+
+**Recovery pattern:** Read the completed Canvas handle interface, wrote the Game files manually using the handle methods as the contract between canvas and game logic. No work was lost — the Canvas defines the API, the Game implements the state machine around it.
+
+**Takeaway:** When parallelizing with agents, design the Canvas handle interface first. It's the contract that survives if an agent crashes — the Game file can always be reconstructed from the handle methods + established game patterns.
+
+---
+
+## Phase 9–10: Polish, Bug Fixes, Market Expansion
+
+### Penalty Shootout — Double-Fire Bug
+
+#### Before
+With 1HZ markets, a tick arriving during the 800ms goal animation would be processed as a second kick — causing 3 goals to show after only 2 kicks.
+
+#### After
+Phase ref is set to `"idle"` immediately upon capturing the resolving tick, before the animation `setTimeout`. The animation still plays for 800ms, but no new ticks can be processed during that window.
+
+**Takeaway:** When tick frequency (~1s) is close to animation duration (~800ms), always block re-entry synchronously at the ref level, not with state updates (which are async and batched).
+
+---
+
+### Deriv API String-vs-Number Coercion
+
+#### Before
+`tick.quote` typed as `number` in TypeScript, but Deriv WebSocket returns it as a JSON string. `tick.quote.toFixed(2)` crashes at runtime with `W.toFixed is not a function`. Only TidalSurge hit this because other games didn't call `.toFixed()` in the render path.
+
+#### After
+`useTicks.ts` coerces `t.quote = Number(t.quote)` at the boundary. TidalSurge also wraps `.toFixed()` calls with `Number()` defensively.
+
+**Takeaway:** Never trust TypeScript interfaces for WebSocket data. The runtime type can differ from the declared type. Coerce at the system boundary.
+
+---
+
+### History Page — Missing `profit_loss` Field
+
+#### Before
+`useProfitTable.ts` assumed the API returned a `profit_loss` field. It doesn't exist — `Number(undefined)` produced `NaN` throughout the page (P&L, win rate, avg return all broken).
+
+#### After
+Calculate P&L from the fields the API actually provides: `sell_price` (for manually sold contracts) with `payout` as fallback (for game contracts that settle automatically). `profit_loss = (sell_price || payout) - buy_price`.
+
+**Takeaway:** Always verify API response schemas. TypeScript interfaces can declare fields that don't exist in the actual response. The `payout` fallback was critical — game contracts (DIGITODD, ONETOUCH) often have `sell_price: 0` but `payout > 0`.
+
+---
+
+### 1HZ Market Expansion
+
+#### Before
+Most games only offered R_100, R_75, R_50 (2-second tick volatility indices). Some had forex pairs (frxEURUSD, frxGBPUSD) which tick infrequently.
+
+#### After
+All applicable games now include 5 1HZ markets (1HZ100V through 1HZ10V) — synthetic indices that tick every ~1 second. Market grids updated to 3-4 columns for the larger sets. Forex pairs removed from TidalSurge (replaced with 1HZ).
+
+Skipped for MeteorBlaster — Crash/Boom mechanics require spike detection which 1HZ markets don't provide.
+
+**Takeaway:** 1HZ markets make games significantly more responsive and engaging. Always evaluate whether new market types are compatible with the game's core mechanic before adding them.
+
+---
+
+### History Page — Visual Redesign
+
+#### Before
+Plain Tailwind gray cards with `bg-gray-900` backgrounds. Basic table with `border-gray-800`. Contract types shown as raw shortcodes (CALL, PUT, DIGITODD).
+
+#### After
+- Stat cards: gradient backgrounds with colored left borders, radial glow effects, icon drop-shadows, accent-colored values with text glow
+- Table: premium container with accent header glow, colored left-border per row (green=profit, red=loss), human-readable labels (Rise, Fall, Odd, Even, Match, etc.), P&L text glow
+- Header: accent icon with drop-shadow, styled subtitle matching games page
+
+**Takeaway:** Consistent premium styling across all pages makes the app feel cohesive. Raw API values (DIGITODD) should be mapped to user-friendly labels (Odd) at the display layer.
+
+---
+
+### Hero Page — Stale Game References
+
+#### Before
+Landing page games section showed "Rise or Fall" and "Guess the Digit" (replaced games). Copy said "Two intuitive games."
+
+#### After
+Updated to "Bear vs Bull" and "Vault Heist" (actual top games). Copy updated to "10 unique games."
+
+**Takeaway:** Landing page copy drifts as features evolve. Audit before every deployment.

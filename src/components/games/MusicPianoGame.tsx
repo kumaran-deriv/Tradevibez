@@ -6,7 +6,7 @@ import { GameResult } from "@/components/games/GameResult";
 import { useTicks } from "@/hooks/useTicks";
 import { useWs } from "@/context/WebSocketContext";
 import { useAuth } from "@/context/AuthContext";
-import { Music, TrendingUp, TrendingDown, Zap } from "lucide-react";
+import { Music, TrendingUp, TrendingDown, Zap, ChevronUp, ChevronDown } from "lucide-react";
 import type { PianoCanvasHandle } from "./MusicPianoCanvas";
 
 /* ─── Dynamic import ─────────────────────────────────────── */
@@ -25,11 +25,16 @@ const MusicPianoCanvas = dynamic(() => import("./MusicPianoCanvas"), {
 /* ─── Constants ──────────────────────────────────────────── */
 
 const GAME_MARKETS = [
-  { symbol: "R_100", label: "Volatility 100" },
-  { symbol: "R_75",  label: "Volatility 75"  },
-  { symbol: "R_50",  label: "Volatility 50"  },
+  { symbol: "R_100",   label: "Volatility 100" },
+  { symbol: "R_75",    label: "Volatility 75"  },
+  { symbol: "R_50",    label: "Volatility 50"  },
+  { symbol: "1HZ100V", label: "Vol 100 (1s)"   },
+  { symbol: "1HZ75V",  label: "Vol 75 (1s)"    },
+  { symbol: "1HZ50V",  label: "Vol 50 (1s)"    },
+  { symbol: "1HZ25V",  label: "Vol 25 (1s)"    },
+  { symbol: "1HZ10V",  label: "Vol 10 (1s)"    },
 ];
-const TICK_OPTIONS   = [20, 30, 40] as const;
+const TICK_OPTIONS   = [10, 15, 20] as const;
 const STAKE_PRESETS  = [5, 10, 25, 50];
 const NOTE_NAMES     = ["C4","D4","E4","G4","A4","C5","D5","E5","G5","A5","C6"];
 const START_NOTE_IDX = 5;
@@ -80,20 +85,22 @@ export function MusicPianoGame() {
   const currency = activeAccount?.currency ?? "USD";
 
   const [symbol, setSymbol]         = useState("R_100");
-  const [totalTicks, setTotalTicks] = useState<20 | 30 | 40>(30);
+  const [totalTicks, setTotalTicks] = useState<10 | 15 | 20>(15);
   const [stake, setStake]           = useState(10);
   const [bet, setBet]               = useState<Bet>("harmony");
   const [gameState, setGameState]   = useState<GameState>("idle");
 
   const [tickCount, setTickCount]   = useState(0);
   const [noteIdx, setNoteIdx]       = useState(START_NOTE_IDX);
+  const [upTicks, setUpTicks]       = useState(0);
+  const [downTicks, setDownTicks]   = useState(0);
   const [result, setResult]         = useState<PianoResult | null>(null);
   const [buyError, setBuyError]     = useState<string | null>(null);
   const [replayDone, setReplayDone] = useState(false);
 
   /* Refs */
   const gameStateRef  = useRef<GameState>("idle");
-  const totalTicksRef = useRef(30);
+  const totalTicksRef = useRef(15);
   const stakeRef      = useRef(10);
   const betRef        = useRef<Bet>("harmony");
   const tickCountRef  = useRef(0);
@@ -102,13 +109,22 @@ export function MusicPianoGame() {
   const prevQuoteRef  = useRef<number | null>(null);
   const contractIdRef = useRef<number | null>(null);
   const canvasRef     = useRef<PianoCanvasHandle>(null);
+  const needsCanvasReset = useRef(false);
 
-  const { tick } = useTicks(symbol);
+  const { tick, direction: tickDirection } = useTicks(symbol);
 
   useEffect(() => { gameStateRef.current = gameState; },   [gameState]);
   useEffect(() => { totalTicksRef.current = totalTicks; }, [totalTicks]);
   useEffect(() => { stakeRef.current = stake; },           [stake]);
   useEffect(() => { betRef.current = bet; },               [bet]);
+
+  const onCanvasReady = useCallback((handle: PianoCanvasHandle | null) => {
+    (canvasRef as React.MutableRefObject<PianoCanvasHandle | null>).current = handle;
+    if (handle && needsCanvasReset.current) {
+      needsCanvasReset.current = false;
+      handle.reset();
+    }
+  }, []);
 
   /* ─── Buy contract ──────────────────────────────────── */
 
@@ -118,7 +134,7 @@ export function MusicPianoGame() {
     authWs.send({
       proposal: 1, amount: stakeAmt, basis: "stake",
       contract_type: contractType, currency,
-      duration: ticks, duration_unit: "t", symbol: sym,
+      duration: ticks, duration_unit: "t", underlying_symbol: sym,
     }, (propData) => {
       if (propData.error) { setBuyError((propData.error as { message: string }).message); return; }
       const prop = propData.proposal as { id: string; ask_price: number } | undefined;
@@ -136,6 +152,7 @@ export function MusicPianoGame() {
   const handleLaunch = () => {
     if (authStatus !== "connected") return;
     setTickCount(0); setNoteIdx(START_NOTE_IDX);
+    setUpTicks(0); setDownTicks(0);
     setResult(null); setBuyError(null); setReplayDone(false);
     tickCountRef.current  = 0;
     noteIdxRef.current    = START_NOTE_IDX;
@@ -143,18 +160,15 @@ export function MusicPianoGame() {
     prevQuoteRef.current  = null;
     contractIdRef.current = null;
 
+    needsCanvasReset.current = true;
     setGameState("live");
     gameStateRef.current = "live";
+    if (canvasRef.current) {
+      canvasRef.current.reset();
+      needsCanvasReset.current = false;
+    }
     buyContract(bet, stake, symbol, totalTicks);
   };
-
-  /* ─── Reset canvas when game goes live ─────────────── */
-
-  useEffect(() => {
-    if (gameState === "live") {
-      canvasRef.current?.reset();
-    }
-  }, [gameState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Tick processing ───────────────────────────────── */
 
@@ -176,6 +190,9 @@ export function MusicPianoGame() {
     else if (dir === "down") ni = Math.max(0, ni - 1);
     noteIdxRef.current = ni;
     setNoteIdx(ni);
+
+    if (dir === "up") setUpTicks((p) => p + 1);
+    else if (dir === "down") setDownTicks((p) => p + 1);
 
     const nextCount = tickCountRef.current + 1;
     tickCountRef.current = nextCount;
@@ -224,6 +241,7 @@ export function MusicPianoGame() {
   const resetGame = () => {
     setGameState("idle"); gameStateRef.current = "idle";
     setTickCount(0); setNoteIdx(START_NOTE_IDX);
+    setUpTicks(0); setDownTicks(0);
     setResult(null); setBuyError(null); setReplayDone(false);
     prevTickEpoch.current = null; prevQuoteRef.current = null;
   };
@@ -238,14 +256,14 @@ export function MusicPianoGame() {
         {/* Market */}
         <div className="flex flex-col gap-2">
           <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>MARKET</span>
-          <div className="flex gap-2">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {GAME_MARKETS.map((m) => (
               <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
-                padding: "8px 14px", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
+                padding: "8px 6px", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
                 border: `1px solid ${symbol === m.symbol ? "rgba(168,85,247,0.5)" : "var(--border)"}`,
                 background: symbol === m.symbol ? "rgba(168,85,247,0.08)" : "rgba(255,255,255,0.02)",
                 color: symbol === m.symbol ? "#a855f7" : "var(--text-secondary)",
-                fontSize: 12, fontFamily: "monospace",
+                fontSize: 11, fontFamily: "monospace",
               }}>{m.label}</button>
             ))}
           </div>
@@ -292,15 +310,23 @@ export function MusicPianoGame() {
               const sel = bet === b;
               return (
                 <button key={b} onClick={() => setBet(b)} style={{
-                  flex: 1, padding: "16px 0", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
-                  border: `1px solid ${sel ? `${color}80` : "var(--border)"}`,
-                  background: sel ? `${color}1a` : "rgba(255,255,255,0.02)",
+                  flex: 1, padding: "16px 12px", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                  border: `2px solid ${sel ? `${color}90` : "rgba(255,255,255,0.06)"}`,
+                  background: sel ? `${color}18` : "rgba(255,255,255,0.02)",
                   color: sel ? color : "var(--text-secondary)",
-                  fontSize: 15, fontWeight: "bold", fontFamily: "monospace",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  fontSize: 14, fontWeight: "bold", fontFamily: "monospace",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                  boxShadow: sel ? `0 0 20px ${color}25` : "none",
                 }}>
-                  {b === "harmony" ? <TrendingUp style={{ width: 18, height: 18 }} /> : <TrendingDown style={{ width: 18, height: 18 }} />}
-                  {b === "harmony" ? "🎵 HARMONY (UP)" : "🎸 DISCORD (DOWN)"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {b === "harmony" ? <TrendingUp style={{ width: 18, height: 18 }} /> : <TrendingDown style={{ width: 18, height: 18 }} />}
+                    {b === "harmony" ? "HARMONY" : "DISCORD"}
+                  </div>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>
+                    {b === "harmony"
+                      ? "Price goes UP = you WIN"
+                      : "Price goes DOWN = you WIN"}
+                  </span>
                 </button>
               );
             })}
@@ -308,12 +334,18 @@ export function MusicPianoGame() {
         </div>
 
         {/* Info */}
-        <div style={{ padding: "10px 14px", borderRadius: 6, background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-          {bet === "harmony"
-            ? "🎵 HARMONY — each UP tick moves the melody higher. You buy a CALL. Payout if price trends UP."
-            : "🎸 DISCORD — each DOWN tick moves the melody lower. You buy a PUT. Payout if price trends DOWN."}
+        <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(168,85,247,0.06)", border: "1px solid rgba(168,85,247,0.2)", fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace", lineHeight: 1.7 }}>
+          <div style={{ marginBottom: 6 }}>
+            <strong style={{ color: "#a855f7" }}>How it works:</strong>
+          </div>
+          <div>
+            <span style={{ color: "#22c55e" }}>HARMONY</span> = you buy a <strong>CALL</strong> contract. If the price is <strong>higher</strong> at the end, you win.
+          </div>
+          <div>
+            <span style={{ color: "#ef4444" }}>DISCORD</span> = you buy a <strong>PUT</strong> contract. If the price is <strong>lower</strong> at the end, you win.
+          </div>
           <div style={{ marginTop: 6, color: "rgba(168,85,247,0.7)" }}>
-            ♪ The melody plays back at the end of the round!
+            Each tick plays a note — UP ticks go higher, DOWN ticks go lower. The melody replays at the end!
           </div>
         </div>
 
@@ -344,39 +376,69 @@ export function MusicPianoGame() {
   /* ─── Live + Result ─────────────────────────────────────── */
 
   const progPct = (tickCount / totalTicks) * 100;
+  const isWinning = bet === "harmony" ? upTicks > downTicks : downTicks > upTicks;
+  const isTied = upTicks === downTicks;
 
   return (
     <div className="relative overflow-hidden rounded-xl" style={{ minHeight: "calc(100vh - 220px)" }}>
       {/* Canvas */}
       <div className="absolute inset-0 flex items-center justify-center" style={{ background: "#070b16" }}>
-        <MusicPianoCanvas ref={canvasRef} />
+        <MusicPianoCanvas ref={onCanvasReady} />
       </div>
 
       {/* HUD */}
       <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
         {/* Top bar */}
         <div className="flex items-start justify-between" style={{ padding: "16px 20px" }}>
-          {/* Left: progress */}
-          <div className="flex flex-col gap-2">
+          {/* Left: progress + direction tracker */}
+          <div className="flex flex-col gap-3">
             {gameState === "live" && (
               <>
-                <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", letterSpacing: "0.2em" }}>
-                  TICK {tickCount} / {totalTicks}
-                </span>
-                <div style={{ width: 140, height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${progPct}%`, height: "100%", background: "#a855f7", transition: "width 0.3s ease", borderRadius: 2 }} />
+                <div className="flex flex-col gap-2">
+                  <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", letterSpacing: "0.2em" }}>
+                    TICK {tickCount} / {totalTicks}
+                  </span>
+                  <div style={{ width: 140, height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ width: `${progPct}%`, height: "100%", background: "#a855f7", transition: "width 0.3s ease", borderRadius: 2 }} />
+                  </div>
+                </div>
+                {/* Live direction indicator */}
+                <div style={{
+                  padding: "6px 10px", borderRadius: 6,
+                  background: "rgba(6,11,22,0.9)",
+                  border: `1px solid ${isTied ? "rgba(255,255,255,0.1)" : isWinning ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.3)"}`,
+                  display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 10, fontFamily: "monospace" }}>
+                    <span style={{ color: "#22c55e" }}>UP {upTicks}</span>
+                    <span style={{ color: "var(--text-muted)" }}>vs</span>
+                    <span style={{ color: "#ef4444" }}>DOWN {downTicks}</span>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontFamily: "monospace", fontWeight: 700,
+                    color: isTied ? "var(--text-muted)" : isWinning ? "#22c55e" : "#ef4444",
+                  }}>
+                    {isTied ? "EVEN" : isWinning ? "WINNING" : "LOSING"}
+                  </span>
                 </div>
               </>
             )}
             {gameState === "result" && result && (
               <div style={{
-                padding: "6px 14px", borderRadius: 6,
+                padding: "8px 14px", borderRadius: 8,
                 background: result.won ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
                 border: `1px solid ${result.won ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
                 color: result.won ? "#22c55e" : "#ef4444",
-                fontSize: 16, fontWeight: "bold", fontFamily: "monospace",
+                fontFamily: "monospace",
               }}>
-                {result.won ? "YOU WIN! 🏆" : "YOU LOSE"}
+                <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 4 }}>
+                  {result.won ? "YOU WIN!" : "YOU LOSE"}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                  {bet === "harmony"
+                    ? `Price went ${upTicks > downTicks ? "UP" : "DOWN"} (${upTicks} up vs ${downTicks} down)`
+                    : `Price went ${downTicks > upTicks ? "DOWN" : "UP"} (${downTicks} down vs ${upTicks} up)`}
+                </div>
               </div>
             )}
           </div>
@@ -389,11 +451,46 @@ export function MusicPianoGame() {
           )}
 
           {/* Right: bet indicator */}
-          <div style={{ fontSize: 11, fontFamily: "monospace", color: bet === "harmony" ? "#22c55e" : "#ef4444", textAlign: "right" }}>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2, letterSpacing: "0.2em" }}>YOUR BET</div>
-            {bet === "harmony" ? "🎵 HARMONY" : "🎸 DISCORD"}
+          <div style={{
+            padding: "8px 12px", borderRadius: 8,
+            background: "rgba(6,11,22,0.9)",
+            border: `1px solid ${bet === "harmony" ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+            textAlign: "right",
+          }}>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 3, letterSpacing: "0.2em", fontFamily: "monospace" }}>YOUR BET</div>
+            <div style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: bet === "harmony" ? "#22c55e" : "#ef4444" }}>
+              {bet === "harmony" ? "HARMONY (UP)" : "DISCORD (DOWN)"}
+            </div>
+            <div style={{ fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)", marginTop: 2 }}>
+              {bet === "harmony" ? "Win if price rises" : "Win if price falls"}
+            </div>
           </div>
         </div>
+
+        {/* Live tick price */}
+        {gameState === "live" && tick && (
+          <div style={{
+            position: "absolute", top: 70, left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "3px 10px", borderRadius: 6,
+            background: "rgba(6,11,22,0.85)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "monospace", letterSpacing: "0.1em" }}>TICK</span>
+            <span style={{
+              color: tickDirection === "up" ? "#22c55e" : tickDirection === "down" ? "#ef4444" : "rgba(255,255,255,0.6)",
+              fontSize: 12, fontFamily: "monospace", fontWeight: 700,
+            }}>
+              {tick.quote.toFixed(2)}
+            </span>
+            {tickDirection && (
+              <span style={{ color: tickDirection === "up" ? "#22c55e" : "#ef4444" }}>
+                {tickDirection === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Replay notice */}
         {replayDone && gameState === "result" && (

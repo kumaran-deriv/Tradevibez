@@ -29,6 +29,7 @@ export function useTicks(symbol: string | null) {
     const unsub = ws.subscribe("tick", (data) => {
       const t = data.tick as Tick | undefined;
       if (t && t.symbol === symbol) {
+        t.quote = Number(t.quote);
         setTick((prev) => {
           if (prev) setPrevQuote(prev.quote);
           return t;

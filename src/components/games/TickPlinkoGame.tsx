@@ -30,9 +30,14 @@ const TOTAL_SLOTS  = MULTIPLIERS.length; // 15
 const START_COL    = 7;
 
 const GAME_MARKETS = [
-  { symbol: "R_100", label: "Volatility 100" },
-  { symbol: "R_75",  label: "Volatility 75"  },
-  { symbol: "R_50",  label: "Volatility 50"  },
+  { symbol: "R_100",   label: "Volatility 100" },
+  { symbol: "R_75",    label: "Volatility 75"  },
+  { symbol: "R_50",    label: "Volatility 50"  },
+  { symbol: "1HZ100V", label: "Vol 100 (1s)"   },
+  { symbol: "1HZ75V",  label: "Vol 75 (1s)"    },
+  { symbol: "1HZ50V",  label: "Vol 50 (1s)"    },
+  { symbol: "1HZ25V",  label: "Vol 25 (1s)"    },
+  { symbol: "1HZ10V",  label: "Vol 10 (1s)"    },
 ];
 const STAKE_PRESETS = [5, 10, 25, 50];
 
@@ -234,12 +239,22 @@ export function TickPlinkoGame() {
   const streakCountRef  = useRef(0);
   const streakDirRef    = useRef<"up" | "down" | null>(null);
   const canvasRef       = useRef<PlinkoCanvasHandle>(null);
+  const needsCanvasReset = useRef(false);
 
   const { tick } = useTicks(symbol);
 
   useEffect(() => { gameStateRef.current = gameState; },   [gameState]);
   useEffect(() => { stakeRef.current = stake; },           [stake]);
   useEffect(() => { playerSideRef.current = playerSide; }, [playerSide]);
+
+  const onCanvasReady = useCallback((handle: PlinkoCanvasHandle | null) => {
+    (canvasRef as React.MutableRefObject<PlinkoCanvasHandle | null>).current = handle;
+    if (handle && needsCanvasReset.current) {
+      needsCanvasReset.current = false;
+      const playerColor = playerSideRef.current === "bull" ? "#22c55e" : "#ef4444";
+      handle.reset(TOTAL_TICKS, playerColor);
+    }
+  }, []);
 
   /* ─── Buy contract ─────────────────────────────────── */
 
@@ -249,7 +264,7 @@ export function TickPlinkoGame() {
     authWs.send({
       proposal: 1, amount: stakeAmt, basis: "stake",
       contract_type: contractType, currency,
-      duration: TOTAL_TICKS, duration_unit: "t", symbol: sym,
+      duration: TOTAL_TICKS, duration_unit: "t", underlying_symbol: sym,
     }, (propData) => {
       if (propData.error) { setBuyError((propData.error as { message: string }).message); return; }
       const prop = propData.proposal as { id: string; ask_price: number } | undefined;
@@ -261,30 +276,6 @@ export function TickPlinkoGame() {
       });
     });
   }, [authWs, authStatus, currency]);
-
-  /* ─── Cash out ─────────────────────────────────────── */
-
-  const handleCashOut = useCallback(() => {
-    if (!authWs || authStatus !== "connected") return;
-    if (gameStateRef.current !== "live") return;
-    const contractId = contractIdRef.current;
-    if (!contractId) return;
-
-    setGameState("result");
-    gameStateRef.current = "result";
-
-    const col  = ballColRef.current;
-    const mult = MULTIPLIERS[col] ?? 1;
-
-    authWs.send({ sell: contractId, price: 0 }, (sellData) => {
-      const sold = sellData.sell as { sold_for?: number } | undefined;
-      const derivPayout = sold?.sold_for ?? 0;
-      const won = derivPayout > 0;
-      const payout = won ? stakeRef.current * mult : 0;
-      setResult({ won, slot: col, multiplier: mult, buyPrice: stakeRef.current, payout, cashedOut: true });
-      if (won) sounds.playLandWin(); else sounds.playLandLose();
-    });
-  }, [authWs, authStatus, sounds]);
 
   /* ─── Launch ───────────────────────────────────────── */
 
@@ -305,11 +296,15 @@ export function TickPlinkoGame() {
     prevQuoteRef.current   = null;
     contractIdRef.current  = null;
 
+    needsCanvasReset.current = true;
     setGameState("live");
     gameStateRef.current = "live";
 
     const playerColor = playerSide === "bull" ? "#22c55e" : "#ef4444";
-    canvasRef.current?.reset(TOTAL_TICKS, playerColor);
+    if (canvasRef.current) {
+      canvasRef.current.reset(TOTAL_TICKS, playerColor);
+      needsCanvasReset.current = false;
+    }
     buyContract(playerSide, stake, symbol);
   };
 
@@ -475,16 +470,16 @@ export function TickPlinkoGame() {
           <div style={{ fontSize: 11, fontFamily: "monospace", letterSpacing: "0.15em", color: "#fff", fontWeight: "bold", marginBottom: 10 }}>
             MARKET
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {GAME_MARKETS.map((m) => {
               const sel = symbol === m.symbol;
               return (
                 <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
-                  padding: "12px 8px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
+                  padding: "8px 6px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
                   border: `2px solid ${sel ? "#8b5cf6" + "70" : "rgba(255,255,255,0.08)"}`,
                   background: sel ? "rgba(139,92,246,0.12)" : "rgba(255,255,255,0.03)",
                   color: sel ? "#fff" : "var(--text-secondary)",
-                  fontSize: 12, fontFamily: "monospace", fontWeight: sel ? "bold" : "normal",
+                  fontSize: 11, fontFamily: "monospace", fontWeight: sel ? "bold" : "normal",
                 }}>
                   {m.label}
                 </button>
@@ -580,7 +575,7 @@ export function TickPlinkoGame() {
     <div className="relative overflow-hidden rounded-xl" style={{ minHeight: "calc(100vh - 220px)" }}>
       {/* Canvas */}
       <div className="absolute inset-0">
-        <TickPlinkoCanvas ref={canvasRef} />
+        <TickPlinkoCanvas ref={onCanvasReady} />
       </div>
 
       {/* HUD */}
@@ -645,18 +640,11 @@ export function TickPlinkoGame() {
 
         {/* Bottom bar — live */}
         {gameState === "live" && (
-          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between pointer-events-auto"
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center pointer-events-none"
             style={{ padding: "12px 20px", background: "rgba(6,11,20,0.75)" }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
               {playerSide === "bull" ? "🐂 BULL — CALL contract live" : "🐻 BEAR — PUT contract live"}
             </div>
-            <button onClick={handleCashOut} style={{
-              padding: "10px 20px", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
-              border: "1px solid rgba(234,179,8,0.5)", background: "rgba(234,179,8,0.1)",
-              color: "#eab308", fontSize: 12, fontWeight: "bold", fontFamily: "monospace", letterSpacing: "0.1em",
-            }}>
-              💰 CASH OUT
-            </button>
           </div>
         )}
 
@@ -664,11 +652,6 @@ export function TickPlinkoGame() {
         {gameState === "result" && result && (
           <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pointer-events-auto"
             style={{ padding: "16px 20px", background: "rgba(8,13,24,0.92)" }}>
-            {result.cashedOut && (
-              <div style={{ marginBottom: 10, fontSize: 11, fontFamily: "monospace", color: "#eab308", letterSpacing: "0.12em", padding: "4px 12px", borderRadius: 4, background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.25)" }}>
-                ⚡ CASHED OUT EARLY
-              </div>
-            )}
             {result.won && (
               <div style={{ marginBottom: 8, fontSize: 13, fontFamily: "monospace", color: multColor(result.multiplier) }}>
                 Slot {result.slot + 1} of {TOTAL_SLOTS} — {result.multiplier}× multiplier

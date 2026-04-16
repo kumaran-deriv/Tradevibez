@@ -83,6 +83,7 @@ const HexColorFillerCanvas = forwardRef<HexFillerCanvasHandle>((_, ref) => {
   const playerSide  = useRef<"green" | "red">("green");
   const endState    = useRef<{ playerWon: boolean } | null>(null);
   const particles   = useRef<Particle[]>([]);
+  const waveTimer   = useRef(0);
 
   /* ─── Build map & neutral list ───────────────────────── */
 
@@ -133,6 +134,24 @@ const HexColorFillerCanvas = forwardRef<HexFillerCanvasHandle>((_, ref) => {
 
   function draw(ctx: CanvasRenderingContext2D, dt: number) {
     ctx.clearRect(0, 0, CW, CH);
+
+    /* wave pulse — every 0.5s, ripple through claimed hexes outward from center */
+    waveTimer.current += dt;
+    if (waveTimer.current > 0.5 && !endState.current) {
+      waveTimer.current = 0;
+      const claimed = hexes.current.filter(h => h.color !== "neutral");
+      if (claimed.length > 0) {
+        const pick = claimed[Math.floor(Math.random() * claimed.length)];
+        pick.pulse = 0.6;
+        // Ripple to neighbors
+        for (const h of hexes.current) {
+          if (h.color === pick.color && h !== pick) {
+            const dist = Math.abs(h.q - pick.q) + Math.abs(h.r - pick.r) + Math.abs((-h.q - h.r) - (-pick.q - pick.r));
+            if (dist <= 2) h.pulse = Math.max(h.pulse, 0.3);
+          }
+        }
+      }
+    }
 
     /* background */
     ctx.fillStyle = "#070b16";
@@ -339,8 +358,10 @@ const HexColorFillerCanvas = forwardRef<HexFillerCanvasHandle>((_, ref) => {
 
     triggerTick(dir: "up" | "down" | "flat") {
       if (endState.current) return;
-      if (dir === "up")   claimHex("green");
-      else if (dir === "down") claimHex("red");
+      if (dir === "flat") return;
+
+      const color: "green" | "red" = dir === "up" ? "green" : "red";
+      claimHex(color);
     },
 
     triggerEnd(playerWon: boolean) {

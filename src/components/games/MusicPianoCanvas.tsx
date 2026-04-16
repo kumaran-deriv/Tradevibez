@@ -297,17 +297,38 @@ const MusicPianoCanvas = forwardRef<PianoCanvasHandle>((_, ref) => {
       let ni = noteIdx.current;
       if      (dir === "up")   ni = Math.min(NOTE_COUNT - 1, ni + 1);
       else if (dir === "down") ni = Math.max(0, ni - 1);
-      noteIdx.current    = ni;
-      activeNote.current = ni;
-      glowTime.current   = 0.35;
+      noteIdx.current = ni;
 
-      if (dir !== "flat") {
-        melody.current.push(ni);
-        /* Add dot to roll at playhead */
-        const dotY = ROLL_H - 20 - (ni / (NOTE_COUNT - 1)) * (ROLL_H - 40);
-        dots.current.push({ x: CW - 60, y: dotY, noteIdx: ni, age: 0 });
-        /* Play note */
-        playNote(ni, getAudio().currentTime);
+      if (dir === "flat") {
+        activeNote.current = ni;
+        glowTime.current = 0.35;
+        return;
+      }
+
+      const burstCount = 2 + Math.floor(Math.random() * 3); // 2-4 sub-notes
+      const delayMs = 120; // ms between sub-notes
+
+      for (let b = 0; b < burstCount; b++) {
+        const subDelay = b * delayMs;
+        setTimeout(() => {
+          if (endState.current !== null) return;
+
+          // Small pitch variation for ornamental feel
+          let subNote = ni;
+          if (b > 0) {
+            const drift = Math.random() > 0.5 ? 1 : -1;
+            subNote = Math.max(0, Math.min(NOTE_COUNT - 1, ni + (b % 2 === 0 ? 0 : drift)));
+          }
+
+          activeNote.current = subNote;
+          glowTime.current = 0.3;
+          melody.current.push(subNote);
+
+          const dotY = ROLL_H - 20 - (subNote / (NOTE_COUNT - 1)) * (ROLL_H - 40);
+          dots.current.push({ x: CW - 60, y: dotY, noteIdx: subNote, age: 0 });
+
+          playNote(subNote, getAudio().currentTime, 0.18);
+        }, subDelay);
       }
     },
 
@@ -315,8 +336,8 @@ const MusicPianoCanvas = forwardRef<PianoCanvasHandle>((_, ref) => {
       const notes = melody.current;
       if (notes.length === 0) return;
       const ctx = getAudio();
-      const noteLen = 0.28;
-      const gap     = 0.05;
+      const noteLen = 0.16;
+      const gap = 0.02;
       let t = ctx.currentTime + 0.1;
       for (const n of notes) {
         playNote(n, t, noteLen);

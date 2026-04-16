@@ -9,9 +9,9 @@ Vibe-coding is AI-assisted software development where a human developer collabor
 - **Human:** Kumaran — solo developer, architect, decision-maker
 - **AI Co-Pilot:** Claude Code (Claude Opus 4.6) — code generation, API research, debugging
 - **Project:** TradeVibez — real-time trading web app using Deriv API V2
-- **Live URL:** https://tradevibez.netlify.app
-- **Timeline:** ~10 days (April 6–17, 2026)
-- **Stack:** Next.js 15, Tailwind CSS v4, Deriv API V2 (REST + WebSocket)
+- **Live URL:** https://tradevibez.vercel.app
+- **Timeline:** ~12 days (April 6–17, 2026)
+- **Stack:** Next.js 15, React 19, Tailwind CSS v4, React Three Fiber, Three.js, TradingView Lightweight Charts v5, Deriv API V2 (REST + WebSocket)
 
 ## How We Work
 
@@ -29,18 +29,21 @@ Vibe-coding is AI-assisted software development where a human developer collabor
 | [iterations.md](iterations.md) | Before/after evolution of features and components |
 | [lessons-learned.md](lessons-learned.md) | What went wrong, what surprised us, tips for others |
 
-## Stats (Updated as we build)
+## Stats
 
 | Metric | Value |
 |--------|-------|
-| Build phases completed | 3 / 7 (Foundation, Market Data, Auth) |
-| Total meaningful interactions | 18 |
-| Files generated with AI | 32 |
-| Architecture decisions documented | 8 |
-| Iterations documented | 5 |
-| Lessons learned | 7 |
-| Bugs introduced by AI | 2 (chart v5 API, TypeScript strict) |
-| Bugs fixed by AI | 2 (same session, <5 min each) |
+| Build phases completed | 6 / 7 |
+| Total meaningful interactions | 57+ |
+| Files generated with AI | 50+ |
+| Architecture decisions documented | 25 |
+| Iterations documented | 32+ |
+| Lessons learned | 41 |
+| Solo games built | 10 |
+| Multiplayer games | 1 active + 3 planned |
+| Contract types used | CALL, PUT, DIGITODD, DIGITEVEN, DIGITMATCH, DIGITDIFF, ONETOUCH |
+| Bugs introduced by AI | 5+ (chart v5 API, TypeScript strict, string quotes, double-fire, canvas race) |
+| Bugs fixed by AI | All (same session, <10 min each) |
 | App renames | 3 (DerivEdge → VibeTrader → TradeVibez) |
-| Deploy attempts | 2 (1 failed blobs error, 1 success) |
-| OAuth flow | Working end-to-end on first proper attempt |
+| Deploy migrations | 2 (Vercel → Netlify → Vercel) |
+| OAuth flow | Working end-to-end |

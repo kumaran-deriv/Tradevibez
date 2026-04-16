@@ -1,4 +1,4 @@
-# Architecture Decisions — DerivEdge
+# Architecture Decisions — TradeVibez
 
 Record of AI-assisted architecture decisions, trade-offs considered, and reasoning.
 
@@ -281,4 +281,120 @@ Two games gives judges enough variety to see the pattern without the time cost o
 
 **URL auto-routing:** If the URL contains `?duel=`, the page auto-opens the group game lobby, so share links from GameLobby route guests directly to the join flow without extra navigation steps.
 
-*(More decisions will be added as we build)*
+---
+
+## Decision 18: Tidal Surge Over Rocket Rise — Visual Metaphor Alignment
+
+**Context:** Needed a 3D/canvas replacement for Rise/Fall game. Original plan was "Rocket Rise" (3D rocket launch scene).
+**Options considered:**
+1. **Rocket Rise** — 3D rocket launching for CALL, crashing for PUT
+2. **Tidal Surge** — 2D ocean waves rising/falling with ship
+3. **Mountain Climb** — Character ascending/descending a mountain
+
+**Decision:** Tidal Surge (ocean waves)
+**Reasoning:** User explicitly rejected the rocket concept ("Instead of rocket plan something else"). Ocean tides are a natural metaphor for market rise/fall — both oscillate between highs and lows. The 2D canvas approach also avoids Three.js overhead for a game that's fundamentally about direction (up/down), not spatial complexity. Waves moving = prices moving. Ship riding the wave = the player's position. Profit zones above/below = the visual target.
+
+**AI's role:** Originally planned Rocket Rise. Pivoted to Tidal Surge after user rejection. The ocean metaphor was immediately intuitive — no second rejection.
+
+---
+
+## Decision 19: 2D Canvas vs 3D Three.js — Per-Game Choice
+
+**Context:** Building 4 new game canvases. Each needs a visual scene. Not all games benefit equally from 3D.
+**Options considered per game:**
+1. **All 3D (Three.js/R3F)** — consistent tech stack, but heavier
+2. **All 2D (HTML5 Canvas)** — lighter, but some games lose visual depth
+3. **Mixed** — pick the right tool per game
+
+**Decision:** Mixed — 2D for Vault Heist + Tidal Surge, 3D for Penalty Shootout + Digit Oracle
+**Reasoning:**
+- **Vault Heist** (2D): Vault door, tumblers, and particles are flat UI elements. 3D adds complexity without visual benefit.
+- **Tidal Surge** (2D): Wave layers + parallax create a convincing depth effect in 2D. Ocean scenes don't need 3D geometry — they need smooth curves and layering.
+- **Penalty Shootout** (3D): Goal posts, ball trajectory, goalkeeper dive — these are spatial actions that need depth perception. A 2D penalty kick would look flat and unconvincing.
+- **Digit Oracle** (3D): Crystal ball with refraction/transmission, orbiting gems, and particle bursts — these benefit from meshPhysicalMaterial and proper lighting.
+
+**AI's role:** Made the per-game recommendation based on the visual requirements of each concept. User approved the mixed approach without changes.
+
+---
+
+## Decision 20: Parallel Agent Execution for Game Building
+
+**Context:** 4 games to build, each with Canvas + Game file (8 files total). Sequential building would take ~2 hours.
+**Options considered:**
+1. **Sequential** — Build one game at a time, test, move on
+2. **Parallel agents** — Spawn 4 background agents, each builds one game
+3. **Hybrid** — Build Canvas files in parallel, Game files sequentially
+
+**Decision:** Parallel agents (4 simultaneous)
+**Reasoning:** Each game is entirely independent — no shared state, no shared files, no merge conflicts. Each agent gets a self-contained prompt with the canvas handle interface, game logic, and visual design. The page.tsx update happens after all 4 games are built.
+
+**Risk realized:** 2 of 4 agents crashed mid-execution (WebSocket timeout). Recovery was straightforward because the Canvas handle interface serves as the contract — Game files were written manually using the handle methods as the API.
+
+**Takeaway:** Parallel agents are effective when tasks are truly independent. Design interfaces (like Canvas handles) first — they're the crash-resistant artifact that survives agent failures.
+
+---
+
+## Decision 21: Tick Data Feed + Early Cash-Out as Universal Game Features
+
+**Context:** User requirement: "Show ticks data for source of truth and early payout option in all the games so it is close to trading."
+**Options considered:**
+1. **Per-game opt-in** — Each game decides whether to show ticks/cash-out
+2. **Universal requirement** — All games must have both features
+3. **Shared component** — Extract tick feed + cash-out into a reusable component
+
+**Decision:** Universal requirement, implemented per-game (no shared component)
+**Reasoning:** The tick feed and cash-out button are positioned differently in each game's HUD layout. A shared component would need too many layout overrides. Instead, each game implements the same pattern: scrolling tick list (8 rows, newest at top, directional arrows, fading older rows) + CASH OUT EARLY button that calls `authWs.send({ sell: contractId, price: 0 })`.
+
+**Why universal:** These features differentiate "gamified trading" from "gambling." The tick feed proves outcomes are market-driven. The cash-out button is a real trading mechanic (closing a position early). Together they establish that these are real Deriv contracts, not random games.
+
+---
+
+## Decision 22: Remove Cash-Out from Tick-Based Games
+
+**Context:** Cash-out (sell contract early) was universal across all games, but for 1-tick digit contracts (Penalty Shootout) and short tick-duration games (Plinko, Oracle), the contract expires before a user could reasonably click the button.
+**Options considered:**
+1. **Keep cash-out everywhere** — Consistency, but useless button for 1-tick contracts
+2. **Remove from tick-based games, keep for time-based** — Clean UX
+3. **Disable dynamically** — Show button but grey it out for short contracts
+
+**Decision:** Remove cash-out from 4 games (Plinko, Tidal Surge, Oracle, Pressure Blaster). Keep for games where it makes sense (Vault Heist, Bear vs Bull, etc.)
+**Reasoning:** A button that does nothing erodes trust. For 1-tick contracts (Penalty Shootout), the contract is already settled before the button could be pressed. For short tick sequences, the sell API call often fails because the contract has already expired. Removing the button is cleaner than showing a broken one.
+
+---
+
+## Decision 23: 1HZ Markets as Default Game Option
+
+**Context:** Original games used R_100/R_50 volatility indices (ticks every ~2s). Deriv offers 1HZ synthetic indices that tick every ~1 second.
+**Options considered:**
+1. **Replace R_ markets with 1HZ** — Simplify, but lose higher-volatility options
+2. **Add 1HZ alongside existing markets** — More choice, larger grid
+3. **Default to 1HZ, hide R_ markets** — Best pacing, fewer options
+
+**Decision:** Add 1HZ markets alongside existing ones, update grid layouts to accommodate.
+**Reasoning:** 1HZ markets make games significantly more responsive — ticks arrive every second instead of every 2 seconds. But some users may prefer higher-volatility R_100/R_50 for larger price movements. Offering both gives flexibility. Exception: MeteorBlaster (Pressure) stays Crash/Boom only because the spike-detection mechanic requires those specific market types.
+
+---
+
+## Decision 24: Calculate P&L Client-Side from API Fields
+
+**Context:** Deriv `profit_table` API returns `buy_price`, `sell_price`, and `payout` but NOT a `profit_loss` field. Different contract types settle differently: manually-sold contracts populate `sell_price`, auto-settled game contracts populate `payout`.
+**Options considered:**
+1. **Use `sell_price - buy_price`** — Simple but wrong for game contracts
+2. **Use `payout - buy_price`** — Simple but wrong for manually-sold contracts
+3. **Use `(sell_price || payout) - buy_price`** — Handles both cases
+
+**Decision:** `effectiveSell = sell_price || payout`, then `profit_loss = effectiveSell - buy_price`
+**Reasoning:** Standard contracts populate `sell_price` when sold. Game contracts (DIGITODD, ONETOUCH, etc.) that expire in-the-money have `sell_price: 0` with winnings in `payout`. The fallback chain covers both: try `sell_price` first (non-zero means it was sold), fall back to `payout` (non-zero means it settled profitably), otherwise `0` (loss).
+
+---
+
+## Decision 25: Defensive Type Coercion at API Boundaries
+
+**Context:** Deriv WebSocket API returns numeric fields as JSON strings despite TypeScript interfaces declaring them as `number`. `Number(undefined)` silently produces `NaN` which propagates through all arithmetic.
+**Options considered:**
+1. **Trust TypeScript types** — No coercion, assume API matches interface
+2. **Coerce in hooks** — `Number()` at data entry points (useTicks, useProfitTable)
+3. **Runtime validation (Zod)** — Full schema validation on every response
+
+**Decision:** Coerce with `Number()` and `?? 0` fallback at hook boundaries. No runtime validation library.
+**Reasoning:** Zod adds bundle size and complexity for a hackathon app. `Number()` + nullish coalescing handles the two real failure modes (strings-as-numbers and missing fields) without overhead. Applied in `useTicks` (tick quotes) and `useProfitTable` (buy_price, sell_price, payout).

@@ -1,4 +1,4 @@
-# Lessons Learned — DerivEdge
+# Lessons Learned — TradeVibez
 
 Mistakes, surprises, and tips from building a trading app with AI as co-pilot.
 
@@ -327,4 +327,131 @@ React guarantees `useEffect` runs after the DOM is committed and children have m
 
 ---
 
-*(More lessons will be added throughout the build)*
+---
+
+## Lesson 30: Visual Metaphor Shapes Perception More Than Mechanics
+
+**What happened:** User rejected "Rocket Rise" as the Rise/Fall replacement — despite identical contract logic to the approved Bear vs Bull game. The replacement concept "Tidal Surge" (ocean waves) was approved instantly.
+
+**Why it matters:** A rocket "rising" or "crashing" has a tech-startup connotation — it doesn't map to trading intuitively. An ocean tide rising and falling mirrors how traders describe markets ("the tide is turning," "riding the wave"). The metaphor must feel natural for the financial context, not just visually impressive.
+
+**Tip:** When designing gamified trading experiences, test the metaphor against common trading language. If traders already use the metaphor in speech, it'll feel right in the game. "Riding the wave" = natural. "Launching a rocket" = forced.
+
+---
+
+## Lesson 31: Canvas Handle Interface = Crash-Resistant Contract
+
+**What happened:** Built 4 games in parallel using background agents. 2 agents crashed after writing the Canvas file but before writing the Game file. Recovery was straightforward: the Canvas handle interface (the `useImperativeHandle` methods) defined exactly what the Game file needed to call.
+
+**Why it matters:** When parallelizing with agents, the interface between components is the most important artifact. If an agent crashes after writing the Canvas with `reset()`, `triggerResolve()`, `triggerAlarm()` methods, you can reconstruct the Game file from just those method signatures + established patterns.
+
+**Tip:** Design the imperative handle interface FIRST, before building either Canvas or Game. It's the contract that survives infrastructure failures. Document it in the plan. If an agent crashes, the interface tells you exactly what the missing file needs to implement.
+
+---
+
+## Lesson 32: Type Narrowing from Hook Returns
+
+**What happened:** `useTicks` returns `direction` as `string`, but `TickHistoryItem.dir` expects `"up" | "down" | "flat"`. Assigning `direction || "flat"` to a typed field produced `Type 'string' is not assignable to type '"up" | "down" | "flat"'`.
+
+**Fix:**
+```typescript
+// BEFORE — TypeScript sees this as string
+const dir = direction || "flat";
+
+// AFTER — explicit narrowing
+const dir: "up" | "down" | "flat" = direction === "up" ? "up" : direction === "down" ? "down" : "flat";
+```
+
+**Why it matters:** Custom hooks often return wider types than their consumers expect. `useTicks` returns `string` because it handles any direction value from the API. Consumers that need a union type must explicitly narrow, not just provide a fallback.
+
+**Tip:** When a hook returns `string` but you need a union type, use conditional assignment (ternary chain) rather than `||` fallback. The `||` approach preserves the `string` type; the ternary produces a typed literal union.
+
+---
+
+## Lesson 33: 2D Canvas + Parallax Can Match 3D Visual Quality
+
+**What happened:** Tidal Surge uses 2D HTML5 Canvas with 4-layer parallax waves. The visual result (ocean depth, wave motion, ship bobbing, moonlit atmosphere) is comparable to 3D Three.js scenes — without the WebGL overhead, bundle size, or SSR issues.
+
+**Why it matters:** Three.js adds ~300KB to the bundle and requires `ssr: false` dynamic imports. For games where the visual metaphor is fundamentally 2D (waves, vaults, boards), 2D Canvas with layering techniques produces equivalent perceived quality at a fraction of the cost.
+
+**Tip:** Before reaching for Three.js, ask: "Does this scene need depth or spatial interaction?" If the answer is "no — it just needs smooth animation and layering," 2D Canvas with parallax is the better tool. Reserve 3D for scenes that need perspective, refraction, or spatial object interaction (like the crystal ball or penalty kick).
+
+---
+
+## Lesson 34: Parallel Agents Are High-Throughput but Fragile
+
+**What happened:** Spawned 4 background agents simultaneously to build 4 games. 2 completed successfully, 2 crashed with "socket connection was closed unexpectedly" — likely due to context window or connection limits.
+
+**Why it matters:** Parallel agents can cut build time from 2 hours to 30 minutes. But the failure rate scales with parallelism. With 4 agents, 50% crashed. The time saved by parallelism was partially offset by manual recovery work.
+
+**Tip:** For parallel agent execution: (1) Design interfaces first so partial work is recoverable, (2) Expect ~50% failure rate for 4+ simultaneous agents, (3) Front-load the simpler/smaller file per agent (Canvas before Game) so the crash-resistant artifact is completed first, (4) Have a manual fallback plan — if an agent crashes, you should be able to write the missing file from the interface contract in 15 minutes.
+
+---
+
+## Lesson 35: Never Trust TypeScript Interfaces for WebSocket Data
+
+**What happened:** Deriv API returns `tick.quote` as a JSON string, but our TypeScript `Tick` interface declared it as `number`. Calling `.toFixed()` on the string crashed TidalSurge at runtime. TypeScript compiled clean — zero errors — but the app crashed in the browser.
+
+**Why it matters:** TypeScript interfaces describe the *expected* shape, not the *actual* shape. JSON doesn't distinguish between `"123.45"` and `123.45` at the type level — both are valid JSON. WebSocket APIs frequently return numbers as strings.
+
+**Tip:** Always coerce at the system boundary (where data enters your app). `Number(value)` in hooks like `useTicks` and `useProfitTable` catches this class of bug before it reaches components.
+
+---
+
+## Lesson 36: Tick Frequency vs Animation Duration = Race Condition
+
+**What happened:** Penalty Shootout with 1HZ markets. Ticks arrive every ~1 second, but goal animations take 800ms. A new tick arriving during the animation was processed as a second kick, corrupting the score.
+
+**Why it matters:** When external event frequency approaches your UI transition duration, you get race conditions. This doesn't happen with slower markets (R_100 ticks every ~2s) but breaks with 1HZ.
+
+**Tip:** Block re-entry at the ref level (synchronous), not with `setState` (async/batched). Set `phaseRef.current = "idle"` immediately when you capture a tick, before any `setTimeout` animations.
+
+---
+
+## Lesson 37: API Response Fields ≠ Your Interface Fields
+
+**What happened:** Our `ProfitTransaction` interface included `profit_loss: number`, but the Deriv `profit_table` API response has no such field. It only returns `buy_price`, `sell_price`, and `payout`. `Number(undefined)` silently became `NaN`, breaking the entire history page.
+
+**Why it matters:** TypeScript interfaces written during planning may assume fields that don't exist. This is especially dangerous because `Number(undefined) === NaN` doesn't throw — it propagates silently through arithmetic, comparisons, and formatting.
+
+**Tip:** When integrating with an external API, log the first raw response object to verify field names match your interface. Better yet, use runtime validation (Zod, io-ts) at the boundary.
+
+---
+
+## Lesson 38: Game Contracts Settle Differently
+
+**What happened:** Standard contracts have `sell_price > 0` when sold. But game contracts (DIGITODD, DIGITEVEN, ONETOUCH) that expire in-the-money have `sell_price: 0` with the winnings in `payout`. Our P&L calculation only looked at `sell_price`, showing all game wins as losses.
+
+**Why it matters:** Different contract types have different settlement mechanics. A single formula doesn't cover all cases.
+
+**Tip:** Use `sell_price || payout` to handle both manually-sold and auto-settled contracts. The fallback chain is: sell_price (for sold contracts) → payout (for expired-in-the-money) → 0 (for expired-out-of-the-money).
+
+---
+
+## Lesson 39: Landing Page Copy Drifts
+
+**What happened:** After building 10 games, the landing page still said "Two intuitive games" and showed preview cards for "Rise or Fall" and "Guess the Digit" — games that no longer existed.
+
+**Why it matters:** The landing page is the first thing judges see. Stale copy creates a disconnect between the promise and the product. Even worse, clicking through to the games page shows completely different games.
+
+**Tip:** Add "audit landing page" to your pre-deployment checklist. Feature counts, game names, and screenshots all need updating when the product evolves.
+
+---
+
+## Lesson 40: 1HZ Markets Transform Game Pacing
+
+**What happened:** Games originally used R_100/R_50 markets (ticks every ~2 seconds). Adding 1HZ markets (1 tick/second) made games noticeably more responsive and engaging. Penalty Shootout kicks resolved faster, Hex Color Filler cells painted more frequently, and overall gameplay felt more dynamic.
+
+**Why it matters:** Market tick frequency directly impacts game UX. Slower ticks create awkward waiting pauses. Faster ticks create excitement. But faster ticks also expose timing bugs (see Lesson 36).
+
+**Tip:** Always offer 1HZ markets for tick-based games. But test your animation and state machine timing at 1-tick-per-second frequency — bugs hidden at 2-second intervals become visible at 1-second intervals.
+
+---
+
+## Lesson 41: Batch Operations Need Systematic Tracking
+
+**What happened:** "Remove cash out from 4 games and add 1HZ markets to all games" touched 7 files with 2 types of changes each. Without a todo list, it would be easy to miss a file or leave a stale `handleCashOut` reference.
+
+**Why it matters:** Cross-cutting changes across many files are error-prone. Each file has slightly different code patterns (some use `useCallback`, some use function declarations, some have info text mentioning cash out).
+
+**Tip:** Use a tracking mechanism (todo list, checklist) for batch operations. Mark each file done as you go. Run type check after each file change — the compiler catches dangling references immediately.

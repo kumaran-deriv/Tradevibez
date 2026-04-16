@@ -84,17 +84,17 @@ const STEPS = [
 
 const GAMES_PREVIEW = [
   {
-    emoji: "📈",
-    name: "Rise or Fall",
-    tagline: "Predict direction. Win up to 95%.",
-    accentColor: "#14b8a6",
+    emoji: "⚔️",
+    name: "Bear vs Bull",
+    tagline: "3D arena fight driven by live market ticks.",
+    accentColor: "#a855f7",
     glowClass: "game-card-glow-teal",
   },
   {
-    emoji: "🔢",
-    name: "Guess the Digit",
-    tagline: "Nail the last digit. Quick-fire rounds.",
-    accentColor: "#fb923c",
+    emoji: "🔐",
+    name: "Vault Heist",
+    tagline: "Crack the vault with perfect predictions.",
+    accentColor: "#d4a017",
     glowClass: "game-card-glow-orange",
   },
 ];
@@ -317,7 +317,7 @@ function GamesTeaserSection({ isAuthenticated, login }: { isAuthenticated: boole
           </h2>
 
           <p className="text-base leading-relaxed mb-8" style={{ color: "var(--text-secondary)" }}>
-            Two intuitive games built on real Deriv options contracts. No charts to decode,
+            10 unique games built on real Deriv options contracts. No charts to decode,
             no jargon to learn — just predict and win. Perfect for beginners,{" "}
             <span style={{ color: "var(--text-primary)" }}>surprisingly deep for pros.</span>
           </p>

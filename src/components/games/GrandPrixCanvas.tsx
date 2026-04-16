@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useRef, forwardRef, useImperativeHandle } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Sparkles, useGLTF } from "@react-three/drei";
+import { Sparkles } from "@react-three/drei";
 import * as THREE from "three";
 
 /* ─── Types ──────────────────────────────────────────────── */
 
-export interface DragonRaceCanvasHandle {
+export interface GrandPrixCanvasHandle {
   reset(): void;
   triggerTick(dir: "up" | "down", goldZ: number, purpleZ: number): void;
   triggerFinish(winner: "gold" | "purple"): void;
@@ -24,7 +24,7 @@ function RaceTrack() {
         <meshStandardMaterial color="#1a0a05" roughness={0.8} metalness={0.1} />
       </mesh>
 
-      {/* Gold lane surface — warm stone */}
+      {/* Gold lane surface */}
       <mesh position={[-1.4, -0.29, 6]}>
         <boxGeometry args={[2.5, 0.04, 15]} />
         <meshStandardMaterial
@@ -35,7 +35,7 @@ function RaceTrack() {
         />
       </mesh>
 
-      {/* Purple lane surface — dark crystal */}
+      {/* Purple lane surface */}
       <mesh position={[1.4, -0.29, 6]}>
         <boxGeometry args={[2.5, 0.04, 15]} />
         <meshStandardMaterial
@@ -133,63 +133,44 @@ function RaceTrack() {
   );
 }
 
-/* ─── GLB Dragon Model ──────────────────────────────────── */
+/* ─── Procedural Race Car ──────────────────────────────────── */
 
-interface DragonProps {
+interface RaceCarProps {
   xLane: number;
-  modelPath: string;
-  tintColor: string;
+  bodyColor: string;
   emissiveColor: string;
-  scale: number;
-  rotationY: number;
   zRef: React.RefObject<number>;
   sparkRef: React.RefObject<boolean>;
 }
 
-function Dragon({ xLane, modelPath, tintColor, emissiveColor, scale, rotationY, zRef, sparkRef }: DragonProps) {
+function RaceCar({ xLane, bodyColor, emissiveColor, zRef, sparkRef }: RaceCarProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const modelRef = useRef<THREE.Group>(null);
   const sparkGroupRef = useRef<THREE.Group>(null);
-  const { scene } = useGLTF(modelPath);
-  const clonedScene = useRef<THREE.Group | null>(null);
-  const materialsApplied = useRef(false);
-
-  if (!clonedScene.current) {
-    clonedScene.current = scene.clone(true);
-  }
-
-  useEffect(() => {
-    if (!clonedScene.current || materialsApplied.current) return;
-    clonedScene.current.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material) {
-        const mat = (child.material as THREE.MeshStandardMaterial).clone();
-        mat.color.set(tintColor);
-        mat.emissive = new THREE.Color(emissiveColor);
-        mat.emissiveIntensity = 0.6;
-        mat.metalness = 0.5;
-        mat.roughness = 0.35;
-        child.material = mat;
-        child.castShadow = true;
-      }
-    });
-    materialsApplied.current = true;
-  }, [tintColor, emissiveColor]);
+  const wheelFLRef = useRef<THREE.Mesh>(null);
+  const wheelFRRef = useRef<THREE.Mesh>(null);
+  const wheelBLRef = useRef<THREE.Mesh>(null);
+  const wheelBRRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
+
     const targetZ = zRef.current ?? 0;
     const currentZ = groupRef.current.position.z;
     const dist = Math.abs(targetZ - currentZ);
-    const lerpSpeed = dist > 1.5 ? 0.18 : 0.1;
-    groupRef.current.position.z = THREE.MathUtils.lerp(currentZ, targetZ, lerpSpeed);
-    groupRef.current.position.y = 0.15 + Math.sin(clock.elapsedTime * 5 + xLane * 2) * 0.12;
-    groupRef.current.rotation.x = Math.sin(clock.elapsedTime * 3.5 + xLane) * 0.06;
-    groupRef.current.rotation.z = Math.sin(clock.elapsedTime * 6 + xLane) * 0.05;
+    const speed = dist > 1.5 ? 0.18 : 0.1;
+    groupRef.current.position.z = THREE.MathUtils.lerp(currentZ, targetZ, speed);
 
-    if (modelRef.current) {
-      modelRef.current.scale.setScalar(scale);
-      modelRef.current.rotation.set(0, rotationY, 0);
-    }
+    // Subtle suspension bounce
+    groupRef.current.position.y = -0.1 + Math.sin(clock.elapsedTime * 8 + xLane * 3) * 0.015;
+
+    // Slight body roll
+    groupRef.current.rotation.z = Math.sin(clock.elapsedTime * 5 + xLane) * 0.02;
+
+    // Spin wheels based on movement
+    const wheelSpin = clock.elapsedTime * 12;
+    [wheelFLRef, wheelFRRef, wheelBLRef, wheelBRRef].forEach((w) => {
+      if (w.current) w.current.rotation.x = wheelSpin;
+    });
 
     if (sparkGroupRef.current) {
       sparkGroupRef.current.visible = sparkRef.current ?? false;
@@ -197,21 +178,102 @@ function Dragon({ xLane, modelPath, tintColor, emissiveColor, scale, rotationY, 
   });
 
   return (
-    <group ref={groupRef} position={[xLane, 0.1, 0]}>
-      <group ref={modelRef}>
-        {clonedScene.current && (
-          <primitive object={clonedScene.current} />
-        )}
-      </group>
-      <group ref={sparkGroupRef} visible={false} position={[0, 0.15, -0.8]}>
-        <Sparkles count={40} scale={[0.6, 0.4, 0.5]} size={7} speed={4.5} color={emissiveColor} />
+    <group ref={groupRef} position={[xLane, -0.1, 0]}>
+      {/* Main chassis */}
+      <mesh position={[0, 0.1, 0]} castShadow>
+        <boxGeometry args={[0.55, 0.12, 1.0]} />
+        <meshStandardMaterial
+          color={bodyColor}
+          emissive={emissiveColor}
+          emissiveIntensity={0.3}
+          metalness={0.6}
+          roughness={0.3}
+        />
+      </mesh>
+
+      {/* Cabin / cockpit */}
+      <mesh position={[0, 0.22, -0.05]} castShadow>
+        <boxGeometry args={[0.32, 0.1, 0.35]} />
+        <meshStandardMaterial
+          color="#111111"
+          emissive={emissiveColor}
+          emissiveIntensity={0.1}
+          metalness={0.8}
+          roughness={0.2}
+        />
+      </mesh>
+
+      {/* Nose cone */}
+      <mesh position={[0, 0.1, 0.6]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[0.15, 0.35, 8]} />
+        <meshStandardMaterial
+          color={bodyColor}
+          emissive={emissiveColor}
+          emissiveIntensity={0.4}
+          metalness={0.6}
+          roughness={0.3}
+        />
+      </mesh>
+
+      {/* Rear spoiler - wing */}
+      <mesh position={[0, 0.28, -0.48]}>
+        <boxGeometry args={[0.6, 0.04, 0.08]} />
+        <meshStandardMaterial
+          color={bodyColor}
+          emissive={emissiveColor}
+          emissiveIntensity={0.5}
+          metalness={0.5}
+          roughness={0.3}
+        />
+      </mesh>
+      {/* Spoiler pillars */}
+      <mesh position={[-0.18, 0.22, -0.48]}>
+        <boxGeometry args={[0.03, 0.1, 0.03]} />
+        <meshStandardMaterial color="#222" metalness={0.8} roughness={0.2} />
+      </mesh>
+      <mesh position={[0.18, 0.22, -0.48]}>
+        <boxGeometry args={[0.03, 0.1, 0.03]} />
+        <meshStandardMaterial color="#222" metalness={0.8} roughness={0.2} />
+      </mesh>
+
+      {/* Front left wheel */}
+      <mesh ref={wheelFLRef} position={[-0.32, 0.04, 0.3]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.07, 0.07, 0.06, 12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.9} metalness={0.1} />
+      </mesh>
+      {/* Front right wheel */}
+      <mesh ref={wheelFRRef} position={[0.32, 0.04, 0.3]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.07, 0.07, 0.06, 12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.9} metalness={0.1} />
+      </mesh>
+      {/* Back left wheel */}
+      <mesh ref={wheelBLRef} position={[-0.32, 0.04, -0.35]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.09, 0.09, 0.08, 12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.9} metalness={0.1} />
+      </mesh>
+      {/* Back right wheel */}
+      <mesh ref={wheelBRRef} position={[0.32, 0.04, -0.35]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.09, 0.09, 0.08, 12]} />
+        <meshStandardMaterial color="#1a1a1a" roughness={0.9} metalness={0.1} />
+      </mesh>
+
+      {/* Exhaust glow */}
+      <mesh position={[-0.12, 0.08, -0.52]}>
+        <sphereGeometry args={[0.03, 8, 8]} />
+        <meshStandardMaterial color="#ff4500" emissive="#ff4500" emissiveIntensity={2} />
+      </mesh>
+      <mesh position={[0.12, 0.08, -0.52]}>
+        <sphereGeometry args={[0.03, 8, 8]} />
+        <meshStandardMaterial color="#ff4500" emissive="#ff4500" emissiveIntensity={2} />
+      </mesh>
+
+      {/* Surge spark effect */}
+      <group ref={sparkGroupRef} visible={false} position={[0, 0.2, -0.7]}>
+        <Sparkles count={40} scale={[0.5, 0.3, 0.4]} size={7} speed={4.5} color={emissiveColor} />
       </group>
     </group>
   );
 }
-
-useGLTF.preload("/models/dragon-gold.glb");
-useGLTF.preload("/models/dragon-purple.glb");
 
 /* ─── Finish Explosion ───────────────────────────────────── */
 
@@ -291,46 +353,29 @@ function Scene({
 }: SceneProps) {
   return (
     <>
-      {/* Ambient — warm volcanic tone */}
       <ambientLight intensity={1.8} />
       <hemisphereLight args={["#ff6b35", "#1a0a05", 0.8]} />
-
-      {/* Main overhead */}
       <directionalLight position={[2, 10, 5]} intensity={2.5} castShadow />
-
-      {/* Gold dragon spotlight */}
       <pointLight position={[-1.4, 4, 6]} color="#f59e0b" intensity={60} distance={16} decay={2} />
-      {/* Purple dragon spotlight */}
       <pointLight position={[1.4, 4, 6]} color="#a855f7" intensity={60} distance={16} decay={2} />
-      {/* Lava glow from below */}
       <pointLight position={[0, -1, 6]} color="#ff4500" intensity={20} distance={14} decay={2} />
-      {/* Finish line glow */}
       <pointLight position={[0, 3, 13]} color="#f59e0b" intensity={40} distance={12} decay={2} />
-      {/* Back atmosphere */}
       <pointLight position={[0, 5, 16]} color="#ef4444" intensity={15} distance={14} decay={2} />
 
       <RaceTrack />
 
-      {/* Gold dragon — left lane */}
-      <Dragon
+      <RaceCar
         xLane={-1.4}
-        modelPath="/models/dragon-gold.glb"
-        tintColor="#b45309"
+        bodyColor="#b45309"
         emissiveColor="#f59e0b"
-        scale={4.5}
-        rotationY={Math.PI}
         zRef={goldZRef}
         sparkRef={goldSparkRef}
       />
 
-      {/* Purple dragon — right lane */}
-      <Dragon
+      <RaceCar
         xLane={1.4}
-        modelPath="/models/dragon-purple.glb"
-        tintColor="#7e22ce"
+        bodyColor="#7e22ce"
         emissiveColor="#a855f7"
-        scale={4}
-        rotationY={Math.PI}
         zRef={purpleZRef}
         sparkRef={purpleSparkRef}
       />
@@ -343,7 +388,7 @@ function Scene({
 
 /* ─── Canvas ─────────────────────────────────────────────── */
 
-const DragonRaceCanvas = forwardRef<DragonRaceCanvasHandle>((_, ref) => {
+const GrandPrixCanvas = forwardRef<GrandPrixCanvasHandle>((_, ref) => {
   const goldZRef       = useRef<number>(0);
   const purpleZRef     = useRef<number>(0);
   const goldSparkRef   = useRef<boolean>(false);
@@ -404,6 +449,6 @@ const DragonRaceCanvas = forwardRef<DragonRaceCanvasHandle>((_, ref) => {
   );
 });
 
-DragonRaceCanvas.displayName = "DragonRaceCanvas";
+GrandPrixCanvas.displayName = "GrandPrixCanvas";
 
-export default DragonRaceCanvas;
+export default GrandPrixCanvas;

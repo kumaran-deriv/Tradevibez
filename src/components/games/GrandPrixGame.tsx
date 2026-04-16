@@ -6,12 +6,12 @@ import { GameResult } from "@/components/games/GameResult";
 import { useTicks } from "@/hooks/useTicks";
 import { useWs } from "@/context/WebSocketContext";
 import { useAuth } from "@/context/AuthContext";
-import { Zap, Flame, Crown, TrendingUp, TrendingDown } from "lucide-react";
-import type { DragonRaceCanvasHandle } from "./DragonRaceCanvas";
+import { Zap, Flag, Crown, TrendingUp, TrendingDown } from "lucide-react";
+import type { GrandPrixCanvasHandle } from "./GrandPrixCanvas";
 
 /* ─── Dynamic import (SSR disabled for Three.js) ────────── */
 
-const DragonRaceCanvas = dynamic(() => import("./DragonRaceCanvas"), {
+const GrandPrixCanvas = dynamic(() => import("./GrandPrixCanvas"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full flex items-center justify-center" style={{ background: "#040810" }}>
@@ -38,7 +38,7 @@ const GAME_MARKETS = [
 
 const STAKE_PRESETS = [5, 10, 25, 50];
 const TOTAL_TICKS   = 10;
-const FINISH_Z      = 13;   // world-space finish line Z
+const FINISH_Z      = 13;
 
 /* ─── Sound engine ───────────────────────────────────────── */
 
@@ -120,8 +120,8 @@ function TickFeed({ ticks }: { ticks: TickEntry[] }) {
         }}>
           <span style={{ fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)" }}>#{t.n}</span>
           <span style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-primary)" }}>{t.quote.toFixed(2)}</span>
-          <span style={{ fontSize: 12, color: t.dir === "up" ? "#f59e0b" : t.dir === "down" ? "#a855f7" : "var(--text-muted)" }}>
-            {t.dir === "up" ? "🐉" : t.dir === "down" ? "🐉" : "—"}
+          <span style={{ fontSize: 10, color: t.dir === "up" ? "#f59e0b" : t.dir === "down" ? "#a855f7" : "var(--text-muted)" }}>
+            {t.dir === "up" ? "\u2191" : t.dir === "down" ? "\u2193" : "\u2014"}
           </span>
         </div>
       ))}
@@ -129,9 +129,9 @@ function TickFeed({ ticks }: { ticks: TickEntry[] }) {
   );
 }
 
-/* ─── Dragon Progress Bar ────────────────────────────────── */
+/* ─── Car Progress Bar ────────────────────────────────────── */
 
-function DragonProgressBars({
+function CarProgressBars({
   goldPct,
   purplePct,
   bet,
@@ -142,11 +142,10 @@ function DragonProgressBars({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
-      {/* Gold dragon */}
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 10, fontFamily: "monospace", color: bet === "gold" ? "#f59e0b" : "var(--text-muted)", fontWeight: bet === "gold" ? "bold" : "normal" }}>
-            🔸 GOLD DRAGON {bet === "gold" ? "← YOUR BET" : ""}
+            GOLD CAR {bet === "gold" ? "\u2190 YOUR BET" : ""}
           </span>
           <span style={{ fontSize: 10, fontFamily: "monospace", color: "#f59e0b" }}>{Math.round(goldPct)}%</span>
         </div>
@@ -155,11 +154,10 @@ function DragonProgressBars({
         </div>
       </div>
 
-      {/* Purple dragon */}
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 10, fontFamily: "monospace", color: bet === "purple" ? "#a855f7" : "var(--text-muted)", fontWeight: bet === "purple" ? "bold" : "normal" }}>
-            🔹 PURPLE DRAGON {bet === "purple" ? "← YOUR BET" : ""}
+            PURPLE CAR {bet === "purple" ? "\u2190 YOUR BET" : ""}
           </span>
           <span style={{ fontSize: 10, fontFamily: "monospace", color: "#a855f7" }}>{Math.round(purplePct)}%</span>
         </div>
@@ -174,18 +172,18 @@ function DragonProgressBars({
 /* ─── Types ──────────────────────────────────────────────── */
 
 type GameState = "idle" | "racing" | "result";
-type DragonBet = "gold" | "purple";
+type CarBet = "gold" | "purple";
 
 interface RaceResult {
   won: boolean;
   buyPrice: number;
   payout: number;
-  winner: DragonBet;
+  winner: CarBet;
 }
 
 /* ─── Main Component ─────────────────────────────────────── */
 
-export function DragonRaceGame() {
+export function GrandPrixGame() {
   const { authWs, authStatus } = useWs();
   const { activeAccount } = useAuth();
   const currency = activeAccount?.currency ?? "USD";
@@ -193,7 +191,7 @@ export function DragonRaceGame() {
 
   const [symbol, setSymbol]     = useState("R_100");
   const [stake, setStake]       = useState(10);
-  const [bet, setBet]           = useState<DragonBet>("gold");
+  const [bet, setBet]           = useState<CarBet>("gold");
   const [gameState, setGameState] = useState<GameState>("idle");
   const [tickCount, setTickCount] = useState(0);
   const [goldPct, setGoldPct]   = useState(0);
@@ -202,10 +200,9 @@ export function DragonRaceGame() {
   const [buyError, setBuyError] = useState<string | null>(null);
   const [tickHistory, setTickHistory] = useState<TickEntry[]>([]);
 
-  // Refs
   const gameStateRef    = useRef<GameState>("idle");
   const stakeRef        = useRef(10);
-  const betRef          = useRef<DragonBet>("gold");
+  const betRef          = useRef<CarBet>("gold");
   const tickCountRef    = useRef(0);
   const goldZRef        = useRef(0);
   const purpleZRef      = useRef(0);
@@ -213,7 +210,7 @@ export function DragonRaceGame() {
   const unsubFnRef      = useRef<(() => void) | null>(null);
   const prevTickEpoch   = useRef<number | null>(null);
   const prevQuoteRef    = useRef<number | null>(null);
-  const canvasRef       = useRef<DragonRaceCanvasHandle>(null);
+  const canvasRef       = useRef<GrandPrixCanvasHandle>(null);
   const needsCanvasReset = useRef(false);
 
   const { tick } = useTicks(symbol);
@@ -222,8 +219,8 @@ export function DragonRaceGame() {
   useEffect(() => { stakeRef.current = stake; }, [stake]);
   useEffect(() => { betRef.current = bet; }, [bet]);
 
-  const onCanvasReady = useCallback((handle: DragonRaceCanvasHandle | null) => {
-    (canvasRef as React.MutableRefObject<DragonRaceCanvasHandle | null>).current = handle;
+  const onCanvasReady = useCallback((handle: GrandPrixCanvasHandle | null) => {
+    (canvasRef as React.MutableRefObject<GrandPrixCanvasHandle | null>).current = handle;
     if (handle && needsCanvasReset.current) {
       needsCanvasReset.current = false;
       handle.reset();
@@ -250,8 +247,7 @@ export function DragonRaceGame() {
 
       const won = poc.profit >= 0;
       const payout = won ? (poc.payout ?? 0) : 0;
-      // Winner dragon: gold = CALL (up), purple = PUT (down)
-      const winner: DragonBet = won
+      const winner: CarBet = won
         ? betRef.current
         : (betRef.current === "gold" ? "purple" : "gold");
 
@@ -269,7 +265,7 @@ export function DragonRaceGame() {
 
   /* ─── Buy contract (CALL/PUT) ────────────────────────── */
 
-  const buyContract = useCallback((sym: string, stakeAmt: number, side: DragonBet) => {
+  const buyContract = useCallback((sym: string, stakeAmt: number, side: CarBet) => {
     if (!authWs || authStatus !== "connected") return;
     const contractType = side === "gold" ? "CALL" : "PUT";
     authWs.send({
@@ -350,7 +346,6 @@ export function DragonRaceGame() {
     tickCountRef.current = nextCount;
     setTickCount(nextCount);
 
-    // Dragon surge magnitude based on tick size (min 0.4, max 2.8 world units per tick)
     const mag = Math.min(Math.abs(delta) * 14 + 0.35, 2.8);
 
     if (dir === "up") {
@@ -358,7 +353,6 @@ export function DragonRaceGame() {
     } else if (dir === "down") {
       purpleZRef.current = Math.min(FINISH_Z, purpleZRef.current + mag);
     } else {
-      // flat: tiny nudge for both so the race doesn't stall
       goldZRef.current = Math.min(FINISH_Z, goldZRef.current + 0.2);
       purpleZRef.current = Math.min(FINISH_Z, purpleZRef.current + 0.2);
     }
@@ -376,12 +370,10 @@ export function DragonRaceGame() {
 
     setTickHistory((prev) => [...prev, { n: nextCount, quote: tick.quote, delta, dir }]);
 
-    // After all ticks, subscribe to contract if we haven't received result yet
     if (nextCount >= TOTAL_TICKS) {
       setTimeout(() => {
         if (gameStateRef.current === "racing" && !contractIdRef.current) {
-          // Fallback: contract ID not yet available
-          const guessWinner: DragonBet = goldZRef.current >= purpleZRef.current ? "gold" : "purple";
+          const guessWinner: CarBet = goldZRef.current >= purpleZRef.current ? "gold" : "purple";
           const won = guessWinner === betRef.current;
           canvasRef.current?.triggerFinish(guessWinner);
           if (won) sounds.playWin(); else sounds.playLose();
@@ -424,7 +416,7 @@ export function DragonRaceGame() {
     return (
       <div className="flex flex-col gap-0" style={{ maxWidth: 560 }}>
 
-        {/* ── Hero banner ── */}
+        {/* Hero banner */}
         <div style={{
           position: "relative", overflow: "hidden", borderRadius: "14px 14px 0 0",
           padding: "32px 24px 28px", textAlign: "center",
@@ -434,16 +426,16 @@ export function DragonRaceGame() {
             position: "absolute", inset: 0, opacity: 0.15,
             background: `radial-gradient(circle at 50% 80%, ${activeAccent}, transparent 70%)`,
           }} />
-          <Flame size={42} style={{ color: accentLava, filter: `drop-shadow(0 0 12px ${accentLava})`, marginBottom: 10 }} />
+          <Flag size={42} style={{ color: accentLava, filter: `drop-shadow(0 0 12px ${accentLava})`, marginBottom: 10 }} />
           <h2 style={{
             margin: 0, fontSize: 24, fontWeight: 900, letterSpacing: "0.08em",
             fontFamily: "monospace", color: "#fff",
             textShadow: `0 0 20px ${accentLava}80`,
           }}>
-            DRAGON RACE
+            GRAND PRIX
           </h2>
           <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(255,255,255,0.55)", fontFamily: "monospace" }}>
-            Two dragons. One track. {TOTAL_TICKS} ticks of pure fire.
+            Two cars. One track. {TOTAL_TICKS} ticks of pure speed.
           </p>
         </div>
 
@@ -454,14 +446,14 @@ export function DragonRaceGame() {
           border: "1px solid rgba(255,69,0,0.15)", borderTop: "none",
         }}>
 
-          {/* ── Choose your dragon — big visual cards ── */}
+          {/* Choose your car */}
           <div className="flex flex-col gap-2">
             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
-              CHOOSE YOUR DRAGON
+              CHOOSE YOUR CAR
             </span>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
 
-              {/* Gold Dragon card */}
+              {/* Gold Car card */}
               <button onClick={() => setBet("gold")} style={{
                 position: "relative", overflow: "hidden",
                 padding: "22px 14px 18px", borderRadius: 12, cursor: "pointer",
@@ -487,7 +479,7 @@ export function DragonRaceGame() {
                   fontSize: 15, fontWeight: 800, fontFamily: "monospace",
                   color: bet === "gold" ? accentGold : "rgba(255,255,255,0.4)",
                   letterSpacing: "0.06em",
-                }}>GOLD DRAGON</span>
+                }}>GOLD CAR</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <TrendingUp size={12} style={{ color: bet === "gold" ? accentGold : "rgba(255,255,255,0.25)" }} />
                   <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
@@ -496,7 +488,7 @@ export function DragonRaceGame() {
                 </div>
               </button>
 
-              {/* Purple Dragon card */}
+              {/* Purple Car card */}
               <button onClick={() => setBet("purple")} style={{
                 position: "relative", overflow: "hidden",
                 padding: "22px 14px 18px", borderRadius: 12, cursor: "pointer",
@@ -522,7 +514,7 @@ export function DragonRaceGame() {
                   fontSize: 15, fontWeight: 800, fontFamily: "monospace",
                   color: bet === "purple" ? accentPurple : "rgba(255,255,255,0.4)",
                   letterSpacing: "0.06em",
-                }}>PURPLE DRAGON</span>
+                }}>PURPLE CAR</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <TrendingDown size={12} style={{ color: bet === "purple" ? accentPurple : "rgba(255,255,255,0.25)" }} />
                   <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
@@ -533,7 +525,7 @@ export function DragonRaceGame() {
             </div>
           </div>
 
-          {/* ── Market selection — CSS grid ── */}
+          {/* Market selection */}
           <div className="flex flex-col gap-2">
             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
               MARKET
@@ -555,7 +547,7 @@ export function DragonRaceGame() {
             </div>
           </div>
 
-          {/* ── Stake — grid buttons ── */}
+          {/* Stake */}
           <div className="flex flex-col gap-2">
             <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
               STAKE ({currency})
@@ -577,17 +569,17 @@ export function DragonRaceGame() {
             </div>
           </div>
 
-          {/* ── Info banner ── */}
+          {/* Info banner */}
           <div style={{
             padding: "10px 14px", borderRadius: 8,
             background: `linear-gradient(135deg, ${accentLava}08, ${activeAccent}06)`,
             border: `1px solid ${accentLava}25`,
             fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, fontFamily: "monospace",
           }}>
-            <Flame size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 6, color: accentLava }} />
-            UP ticks fuel the <span style={{ color: accentGold, fontWeight: 700 }}>Gold Dragon</span>.
-            DOWN ticks fuel the <span style={{ color: accentPurple, fontWeight: 700 }}>Purple Dragon</span>.
-            After {TOTAL_TICKS} ticks, the dragon furthest ahead wins.
+            <Flag size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 6, color: accentLava }} />
+            UP ticks fuel the <span style={{ color: accentGold, fontWeight: 700 }}>Gold Car</span>.
+            DOWN ticks fuel the <span style={{ color: accentPurple, fontWeight: 700 }}>Purple Car</span>.
+            After {TOTAL_TICKS} ticks, the car furthest ahead wins.
           </div>
 
           {buyError && (
@@ -596,7 +588,7 @@ export function DragonRaceGame() {
             </div>
           )}
 
-          {/* ── Start Race button ── */}
+          {/* Start Race button */}
           <button
             onClick={handleStartRace}
             disabled={authStatus !== "connected"}
@@ -639,7 +631,7 @@ export function DragonRaceGame() {
           fontSize: 13, color: result.winner === "gold" ? "#f59e0b" : "#a855f7",
           fontFamily: "monospace",
         }}>
-          {result.winner === "gold" ? "🔸 Gold Dragon wins the race!" : "🔹 Purple Dragon wins the race!"}
+          {result.winner === "gold" ? "Gold Car wins the race!" : "Purple Car wins the race!"}
         </div>
         <GameResult
           won={result.won}
@@ -658,9 +650,8 @@ export function DragonRaceGame() {
 
   return (
     <div style={{ position: "relative", width: "100%", height: 520, background: "#040810", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(245,158,11,0.2)" }}>
-      {/* 3D canvas */}
       <div style={{ position: "absolute", inset: 0 }}>
-        <DragonRaceCanvas ref={onCanvasReady} />
+        <GrandPrixCanvas ref={onCanvasReady} />
       </div>
 
       {/* HUD — top bar */}
@@ -668,17 +659,15 @@ export function DragonRaceGame() {
         position: "absolute", top: 14, left: 14, right: 160,
         display: "flex", alignItems: "center", gap: 12, zIndex: 10, pointerEvents: "none",
       }}>
-        {/* Your bet */}
         <div style={{
           padding: "5px 12px", borderRadius: 6, background: "rgba(6,11,20,0.88)",
           border: `1px solid ${bet === "gold" ? "rgba(245,158,11,0.4)" : "rgba(168,85,247,0.4)"}`,
           fontSize: 11, fontFamily: "monospace",
           color: bet === "gold" ? "#f59e0b" : "#a855f7",
         }}>
-          {bet === "gold" ? "🔸 GOLD" : "🔹 PURPLE"}
+          {bet === "gold" ? "GOLD" : "PURPLE"}
         </div>
 
-        {/* Tick progress */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)", letterSpacing: "0.15em" }}>TICKS</span>
@@ -689,19 +678,18 @@ export function DragonRaceGame() {
           </div>
         </div>
 
-        {/* Stake */}
         <div style={{ fontSize: 12, fontFamily: "monospace", color: bet === "gold" ? "#f59e0b" : "#a855f7" }}>
           {stake} {currency}
         </div>
       </div>
 
-      {/* Dragon progress bars — bottom HUD */}
+      {/* Car progress bars — bottom HUD */}
       <div style={{
         position: "absolute", bottom: 16, left: 16, zIndex: 10, pointerEvents: "none",
         background: "rgba(4,8,16,0.86)", padding: "10px 14px", borderRadius: 8,
         border: "1px solid rgba(255,255,255,0.06)",
       }}>
-        <DragonProgressBars goldPct={goldPct} purplePct={purplePct} bet={gameState === "racing" ? bet : null} />
+        <CarProgressBars goldPct={goldPct} purplePct={purplePct} bet={gameState === "racing" ? bet : null} />
       </div>
 
       <TickFeed ticks={tickHistory} />

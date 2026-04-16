@@ -6,7 +6,7 @@ import { GameResult } from "@/components/games/GameResult";
 import { useTicks } from "@/hooks/useTicks";
 import { useWs } from "@/context/WebSocketContext";
 import { useAuth } from "@/context/AuthContext";
-import { Zap, TrendingUp, TrendingDown } from "lucide-react";
+import { Zap, TrendingUp, TrendingDown, Palette, Hexagon, ChevronUp, ChevronDown } from "lucide-react";
 import type { HexFillerCanvasHandle } from "./HexColorFillerCanvas";
 
 /* ─── Dynamic import ─────────────────────────────────────── */
@@ -25,9 +25,14 @@ const HexColorFillerCanvas = dynamic(() => import("./HexColorFillerCanvas"), {
 /* ─── Constants ──────────────────────────────────────────── */
 
 const GAME_MARKETS = [
-  { symbol: "R_100", label: "Volatility 100" },
-  { symbol: "R_75",  label: "Volatility 75"  },
-  { symbol: "R_50",  label: "Volatility 50"  },
+  { symbol: "R_100",   label: "Volatility 100" },
+  { symbol: "R_75",    label: "Volatility 75"  },
+  { symbol: "R_50",    label: "Volatility 50"  },
+  { symbol: "1HZ100V", label: "Vol 100 (1s)"   },
+  { symbol: "1HZ75V",  label: "Vol 75 (1s)"    },
+  { symbol: "1HZ50V",  label: "Vol 50 (1s)"    },
+  { symbol: "1HZ25V",  label: "Vol 25 (1s)"    },
+  { symbol: "1HZ10V",  label: "Vol 10 (1s)"    },
 ];
 const TICK_OPTIONS = [40, 60] as const;
 const STAKE_PRESETS = [5, 10, 25, 50];
@@ -96,13 +101,22 @@ export function HexColorFillerGame() {
   const streakCountRef  = useRef(0);
   const streakDirRef    = useRef<"up" | "down" | null>(null);
   const canvasRef       = useRef<HexFillerCanvasHandle>(null);
+  const needsCanvasReset = useRef(false);
 
-  const { tick } = useTicks(symbol);
+  const { tick, direction: tickDirection } = useTicks(symbol);
 
   useEffect(() => { gameStateRef.current = gameState; },    [gameState]);
   useEffect(() => { totalTicksRef.current = totalTicks; },  [totalTicks]);
   useEffect(() => { stakeRef.current = stake; },            [stake]);
   useEffect(() => { playerSideRef.current = playerSide; },  [playerSide]);
+
+  const onCanvasReady = useCallback((handle: HexFillerCanvasHandle | null) => {
+    (canvasRef as React.MutableRefObject<HexFillerCanvasHandle | null>).current = handle;
+    if (handle && needsCanvasReset.current) {
+      needsCanvasReset.current = false;
+      handle.reset(playerSideRef.current);
+    }
+  }, []);
 
   /* ─── Buy contract ─────────────────────────────────── */
 
@@ -112,7 +126,7 @@ export function HexColorFillerGame() {
     authWs.send({
       proposal: 1, amount: stakeAmt, basis: "stake",
       contract_type: contractType, currency,
-      duration: ticks, duration_unit: "t", symbol: sym,
+      duration: ticks, duration_unit: "t", underlying_symbol: sym,
     }, (propData) => {
       if (propData.error) { setBuyError((propData.error as { message: string }).message); return; }
       const prop = propData.proposal as { id: string; ask_price: number } | undefined;
@@ -141,19 +155,15 @@ export function HexColorFillerGame() {
     prevQuoteRef.current   = null;
     contractIdRef.current  = null;
 
+    needsCanvasReset.current = true;
     setGameState("live");
     gameStateRef.current = "live";
-    // canvas mounts after state update; reset is called in the useEffect below
+    if (canvasRef.current) {
+      canvasRef.current.reset(playerSideRef.current);
+      needsCanvasReset.current = false;
+    }
     buyContract(playerSide, stake, symbol, totalTicks);
   };
-
-  /* ─── Reset canvas when game goes live ─────────────── */
-
-  useEffect(() => {
-    if (gameState === "live") {
-      canvasRef.current?.reset(playerSideRef.current);
-    }
-  }, [gameState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ─── Tick processing ──────────────────────────────── */
 
@@ -236,107 +246,203 @@ export function HexColorFillerGame() {
   /* ─── Idle ─────────────────────────────────────────── */
 
   if (gameState === "idle") {
+    const accentGreen = "#22c55e";
+    const accentRed = "#ef4444";
+    const accentTeal = "#14b8a6";
+    const activeAccent = playerSide === "green" ? accentGreen : accentRed;
+
     return (
-      <div className="flex flex-col gap-5" style={{ maxWidth: 520 }}>
-        {/* Market */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>MARKET</span>
-          <div className="flex gap-2">
-            {GAME_MARKETS.map((m) => (
-              <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
-                padding: "8px 14px", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
-                border: `1px solid ${symbol === m.symbol ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                background: symbol === m.symbol ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                color: symbol === m.symbol ? "var(--accent)" : "var(--text-secondary)",
-                fontSize: 12, fontFamily: "monospace",
-              }}>{m.label}</button>
-            ))}
-          </div>
-        </div>
+      <div className="flex flex-col gap-0" style={{ maxWidth: 560 }}>
 
-        {/* Round length */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>ROUND LENGTH</span>
-          <div className="flex gap-2">
-            {TICK_OPTIONS.map((t) => (
-              <button key={t} onClick={() => setTotalTicks(t)} style={{
-                flex: 1, padding: "8px 0", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
-                border: `1px solid ${totalTicks === t ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                background: totalTicks === t ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                color: totalTicks === t ? "var(--accent)" : "var(--text-secondary)",
-                fontSize: 13, fontFamily: "monospace",
-              }}>{t} ticks</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Stake */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>STAKE ({currency})</span>
-          <div className="flex gap-2">
-            {STAKE_PRESETS.map((p) => (
-              <button key={p} onClick={() => setStake(p)} style={{
-                flex: 1, padding: "8px 0", borderRadius: 6, cursor: "pointer", transition: "all 0.15s",
-                border: `1px solid ${stake === p ? "rgba(20,184,166,0.5)" : "var(--border)"}`,
-                background: stake === p ? "rgba(20,184,166,0.08)" : "rgba(255,255,255,0.02)",
-                color: stake === p ? "var(--accent)" : "var(--text-secondary)",
-                fontSize: 13, fontFamily: "monospace",
-              }}>{p}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Side */}
-        <div className="flex flex-col gap-2">
-          <span style={{ color: "var(--text-muted)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace" }}>YOUR COLOR</span>
-          <div className="flex gap-3">
-            {(["green", "red"] as Side[]).map((side) => {
-              const color = side === "green" ? "#22c55e" : "#ef4444";
-              const sel = playerSide === side;
-              return (
-                <button key={side} onClick={() => setPlayerSide(side)} style={{
-                  flex: 1, padding: "16px 0", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
-                  border: `1px solid ${sel ? `${color}80` : "var(--border)"}`,
-                  background: sel ? `${color}1a` : "rgba(255,255,255,0.02)",
-                  color: sel ? color : "var(--text-secondary)",
-                  fontSize: 15, fontWeight: "bold", fontFamily: "monospace",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                }}>
-                  {side === "green" ? <TrendingUp style={{ width: 18, height: 18 }} /> : <TrendingDown style={{ width: 18, height: 18 }} />}
-                  {side === "green" ? "🟢 GREEN (UP)" : "🔴 RED (DOWN)"}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Info */}
-        <div style={{ padding: "10px 14px", borderRadius: 6, background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-          {playerSide === "green"
-            ? "🟢 GREEN — each UP tick fills a hex green. You buy a CALL. Payout if price trends UP."
-            : "🔴 RED — each DOWN tick fills a hex red. You buy a PUT. Payout if price trends DOWN."}
-        </div>
-
-        {buyError && (
-          <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: 12 }}>
-            {buyError}
-          </div>
-        )}
-        {!canLaunch && (
-          <div style={{ color: "#eab308", fontSize: 11, fontFamily: "monospace" }}>Connecting to trading server…</div>
-        )}
-
-        <button onClick={handleLaunch} disabled={!canLaunch} style={{
-          padding: "16px 0", borderRadius: 8, transition: "all 0.2s", cursor: canLaunch ? "pointer" : "not-allowed",
-          border: "1px solid rgba(20,184,166,0.5)",
-          background: canLaunch ? "rgba(20,184,166,0.1)" : "rgba(255,255,255,0.02)",
-          color: canLaunch ? "var(--accent)" : "var(--text-muted)",
-          fontSize: 14, fontWeight: "bold", fontFamily: "monospace", letterSpacing: "0.15em",
-          opacity: canLaunch ? 1 : 0.45, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        {/* ── Hero banner ── */}
+        <div style={{
+          position: "relative", overflow: "hidden", borderRadius: "14px 14px 0 0",
+          padding: "32px 24px 28px", textAlign: "center",
+          background: `linear-gradient(135deg, #030a08 0%, ${accentGreen}20 40%, ${accentRed}15 100%)`,
         }}>
-          <Zap style={{ width: 16, height: 16 }} />
-          FILL THE COMB
-        </button>
+          <div style={{
+            position: "absolute", inset: 0, opacity: 0.12,
+            background: `radial-gradient(circle at 50% 80%, ${accentTeal}, transparent 70%)`,
+          }} />
+          <Palette size={42} style={{ color: accentTeal, filter: `drop-shadow(0 0 12px ${accentTeal})`, marginBottom: 10 }} />
+          <h2 style={{
+            margin: 0, fontSize: 24, fontWeight: 900, letterSpacing: "0.08em",
+            fontFamily: "monospace", color: "#fff",
+            textShadow: `0 0 20px ${accentTeal}80`,
+          }}>
+            HEX COLOR FILLER
+          </h2>
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(255,255,255,0.55)", fontFamily: "monospace" }}>
+            Claim the honeycomb. Dominate with your color.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-5" style={{
+          padding: "20px 20px 24px",
+          background: "linear-gradient(180deg, rgba(3,10,8,0.6) 0%, rgba(6,2,12,0.95) 100%)",
+          borderRadius: "0 0 14px 14px",
+          border: `1px solid ${accentTeal}15`, borderTop: "none",
+        }}>
+
+          {/* ── Choose your color — big cards ── */}
+          <div className="flex flex-col gap-2">
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
+              CHOOSE YOUR COLOR
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {(["green", "red"] as Side[]).map((side) => {
+                const color = side === "green" ? accentGreen : accentRed;
+                const sel = playerSide === side;
+                return (
+                  <button key={side} onClick={() => setPlayerSide(side)} style={{
+                    position: "relative", overflow: "hidden",
+                    padding: "22px 14px 18px", borderRadius: 12, cursor: "pointer",
+                    background: sel
+                      ? `linear-gradient(145deg, ${color}20, ${color}08)`
+                      : "rgba(255,255,255,0.02)",
+                    border: `2px solid ${sel ? color : "rgba(255,255,255,0.08)"}`,
+                    transition: "all 0.2s ease",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                    transform: sel ? "scale(1.03)" : "scale(1)",
+                    boxShadow: sel ? `0 0 24px ${color}30, inset 0 0 20px ${color}10` : "none",
+                  }}>
+                    {sel && <div style={{
+                      position: "absolute", inset: 0, opacity: 0.12,
+                      background: `radial-gradient(circle at 50% 30%, ${color}, transparent 65%)`,
+                    }} />}
+                    <Hexagon size={32} style={{
+                      color: sel ? color : "rgba(255,255,255,0.25)",
+                      filter: sel ? `drop-shadow(0 0 8px ${color})` : "none",
+                      transition: "all 0.2s",
+                    }} />
+                    <span style={{
+                      fontSize: 15, fontWeight: 800, fontFamily: "monospace",
+                      color: sel ? color : "rgba(255,255,255,0.4)",
+                      letterSpacing: "0.06em",
+                    }}>{side === "green" ? "GREEN" : "RED"}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      {side === "green"
+                        ? <TrendingUp size={12} style={{ color: sel ? color : "rgba(255,255,255,0.25)" }} />
+                        : <TrendingDown size={12} style={{ color: sel ? color : "rgba(255,255,255,0.25)" }} />}
+                      <span style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
+                        {side === "green" ? "UP ticks · CALL" : "DOWN ticks · PUT"}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Market — CSS grid ── */}
+          <div className="flex flex-col gap-2">
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
+              MARKET
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {GAME_MARKETS.map((m) => (
+                <button key={m.symbol} onClick={() => setSymbol(m.symbol)} style={{
+                  padding: "8px 6px", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                  background: symbol === m.symbol
+                    ? `linear-gradient(135deg, ${activeAccent}18, ${activeAccent}08)`
+                    : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${symbol === m.symbol ? `${activeAccent}80` : "rgba(255,255,255,0.06)"}`,
+                  color: symbol === m.symbol ? activeAccent : "rgba(255,255,255,0.45)",
+                  fontSize: 11, fontFamily: "monospace", fontWeight: symbol === m.symbol ? 700 : 400,
+                }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Round length ── */}
+          <div className="flex flex-col gap-2">
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
+              ROUND LENGTH
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {TICK_OPTIONS.map((t) => (
+                <button key={t} onClick={() => setTotalTicks(t)} style={{
+                  padding: "10px 0", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                  background: totalTicks === t
+                    ? `linear-gradient(135deg, ${activeAccent}18, ${activeAccent}08)`
+                    : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${totalTicks === t ? `${activeAccent}80` : "rgba(255,255,255,0.06)"}`,
+                  color: totalTicks === t ? activeAccent : "rgba(255,255,255,0.45)",
+                  fontSize: 14, fontFamily: "monospace", fontWeight: totalTicks === t ? 700 : 400,
+                }}>
+                  {t} ticks
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Stake — grid ── */}
+          <div className="flex flex-col gap-2">
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", fontFamily: "monospace", fontWeight: 700 }}>
+              STAKE ({currency})
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {STAKE_PRESETS.map((s) => (
+                <button key={s} onClick={() => setStake(s)} style={{
+                  padding: "12px 0", borderRadius: 8, cursor: "pointer", transition: "all 0.15s",
+                  background: stake === s
+                    ? `linear-gradient(135deg, ${activeAccent}20, ${activeAccent}0a)`
+                    : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${stake === s ? `${activeAccent}80` : "rgba(255,255,255,0.06)"}`,
+                  color: stake === s ? activeAccent : "rgba(255,255,255,0.45)",
+                  fontSize: 18, fontFamily: "monospace", fontWeight: 700,
+                }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Info banner ── */}
+          <div style={{
+            padding: "10px 14px", borderRadius: 8,
+            background: `linear-gradient(135deg, ${activeAccent}08, ${accentTeal}06)`,
+            border: `1px solid ${activeAccent}25`,
+            fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, fontFamily: "monospace",
+          }}>
+            <Hexagon size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: 6, color: accentTeal }} />
+            UP ticks fill <span style={{ color: accentGreen, fontWeight: 700 }}>green</span> hexes.
+            DOWN ticks fill <span style={{ color: accentRed, fontWeight: 700 }}>red</span> hexes.
+            The dominant color after all ticks wins.
+          </div>
+
+          {buyError && (
+            <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", fontSize: 12 }}>
+              {buyError}
+            </div>
+          )}
+
+          {/* ── Launch button ── */}
+          <button onClick={handleLaunch} disabled={!canLaunch} style={{
+            width: "100%", padding: "16px 32px", borderRadius: 10,
+            cursor: canLaunch ? "pointer" : "not-allowed",
+            background: canLaunch
+              ? `linear-gradient(135deg, ${playerSide === "green" ? "#15803d" : "#b91c1c"}, ${activeAccent}, ${playerSide === "green" ? "#16a34a" : "#dc2626"})`
+              : "rgba(255,255,255,0.04)",
+            border: "none",
+            color: "#fff", fontSize: 16, fontWeight: 900, letterSpacing: "0.12em", fontFamily: "monospace",
+            opacity: canLaunch ? 1 : 0.4,
+            transition: "all 0.2s",
+            boxShadow: canLaunch ? `0 0 30px ${activeAccent}40, 0 4px 16px rgba(0,0,0,0.4)` : "none",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            <Zap size={16} />
+            FILL THE COMB — {stake} {currency}
+          </button>
+
+          {!canLaunch && (
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", textAlign: "center", margin: 0 }}>
+              Connect your Deriv account to play.
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -344,72 +450,123 @@ export function HexColorFillerGame() {
   /* ─── Live + Result ───────────────────────────────────── */
 
   const progPct = (tickCount / totalTicks) * 100;
+  const sideColor = playerSide === "green" ? "#22c55e" : "#ef4444";
 
   return (
     <div className="relative overflow-hidden rounded-xl" style={{ minHeight: "calc(100vh - 220px)" }}>
       {/* Canvas */}
       <div className="absolute inset-0">
-        <HexColorFillerCanvas ref={canvasRef} />
+        <HexColorFillerCanvas ref={onCanvasReady} />
       </div>
 
-      {/* HUD */}
+      {/* HUD overlay */}
       <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
-        {/* Top bar */}
-        <div className="flex items-start justify-between" style={{ padding: "16px 20px" }}>
-          {/* Left: progress + streak */}
-          <div className="flex flex-col gap-2">
-            {gameState === "live" && (
-              <>
-                <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)", letterSpacing: "0.2em" }}>
-                  TICK {tickCount} / {totalTicks}
-                </span>
-                <div style={{ width: 140, height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${progPct}%`, height: "100%", background: playerSide === "green" ? "#22c55e" : "#ef4444", transition: "width 0.3s ease", borderRadius: 2 }} />
-                </div>
-                {streak && <StreakBadge count={streak.count} dir={streak.dir} />}
-              </>
-            )}
-            {gameState === "result" && result && (
-              <div style={{
-                padding: "6px 14px", borderRadius: 6,
-                background: result.won ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
-                border: `1px solid ${result.won ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
-                color: result.won ? "#22c55e" : "#ef4444",
-                fontSize: 16, fontWeight: "bold", fontFamily: "monospace",
-              }}>
-                {result.won ? "YOU WIN! 🏆" : "YOU LOSE"}
-              </div>
+
+        {/* ── Top center: score vs ── */}
+        {gameState === "live" && (
+          <div style={{
+            position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 14,
+            padding: "8px 18px", borderRadius: 10,
+            background: "rgba(6,11,20,0.88)", border: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <span style={{ fontSize: 24, fontFamily: "monospace", fontWeight: 900, color: "#22c55e" }}>{greenCount}</span>
+              <span style={{ fontSize: 8, fontFamily: "monospace", color: "rgba(34,197,94,0.7)", letterSpacing: "0.15em" }}>GREEN</span>
+            </div>
+            <span style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>vs</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <span style={{ fontSize: 24, fontFamily: "monospace", fontWeight: 900, color: "#ef4444" }}>{redCount}</span>
+              <span style={{ fontSize: 8, fontFamily: "monospace", color: "rgba(239,68,68,0.7)", letterSpacing: "0.15em" }}>RED</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── Live tick price ── */}
+        {gameState === "live" && tick && (
+          <div style={{
+            position: "absolute", top: 52, left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "3px 10px", borderRadius: 6,
+            background: "rgba(6,11,20,0.85)",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}>
+            <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, fontFamily: "monospace", letterSpacing: "0.1em" }}>TICK</span>
+            <span style={{
+              color: tickDirection === "up" ? "#22c55e" : tickDirection === "down" ? "#ef4444" : "rgba(255,255,255,0.6)",
+              fontSize: 12, fontFamily: "monospace", fontWeight: 700,
+            }}>
+              {tick.quote.toFixed(2)}
+            </span>
+            {tickDirection && (
+              <span style={{ color: tickDirection === "up" ? "#22c55e" : "#ef4444" }}>
+                {tickDirection === "up" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </span>
             )}
           </div>
+        )}
 
-          {/* Centre: live hex counts */}
-          {gameState === "live" && (
-            <div className="flex gap-4 items-center">
-              <div className="flex flex-col items-center">
-                <span style={{ fontSize: 20, fontFamily: "monospace", fontWeight: "bold", color: "#22c55e" }}>{greenCount}</span>
-                <span style={{ fontSize: 9, fontFamily: "monospace", color: "rgba(34,197,94,0.7)" }}>GREEN</span>
-              </div>
-              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>vs</span>
-              <div className="flex flex-col items-center">
-                <span style={{ fontSize: 20, fontFamily: "monospace", fontWeight: "bold", color: "#ef4444" }}>{redCount}</span>
-                <span style={{ fontSize: 9, fontFamily: "monospace", color: "rgba(239,68,68,0.7)" }}>RED</span>
-              </div>
+        {/* ── Left: your color badge + streak ── */}
+        <div style={{ position: "absolute", top: 14, left: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{
+            padding: "5px 12px", borderRadius: 6,
+            background: "rgba(6,11,20,0.88)",
+            border: `1px solid ${sideColor}40`,
+            fontSize: 11, fontFamily: "monospace", color: sideColor,
+          }}>
+            <Hexagon size={11} style={{ display: "inline", verticalAlign: "middle", marginRight: 5 }} />
+            {playerSide === "green" ? "GREEN" : "RED"}
+          </div>
+          {gameState === "live" && streak && <StreakBadge count={streak.count} dir={streak.dir} />}
+          {gameState === "result" && result && (
+            <div style={{
+              padding: "6px 14px", borderRadius: 6,
+              background: result.won ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+              border: `1px solid ${result.won ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)"}`,
+              color: result.won ? "#22c55e" : "#ef4444",
+              fontSize: 14, fontWeight: "bold", fontFamily: "monospace",
+            }}>
+              {result.won ? "YOU WIN!" : "YOU LOSE"}
             </div>
           )}
-
-          {/* Right: side indicator */}
-          <div style={{ fontSize: 11, fontFamily: "monospace", color: playerSide === "green" ? "#22c55e" : "#ef4444", textAlign: "right" }}>
-            <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 2, letterSpacing: "0.2em" }}>YOUR COLOR</div>
-            {playerSide === "green" ? "🟢 GREEN" : "🔴 RED"}
-          </div>
         </div>
 
-        {/* Result panel */}
+        {/* ── Right: tick counter + progress ── */}
+        {gameState === "live" && (
+          <div style={{
+            position: "absolute", top: 14, right: 14,
+            display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end",
+            padding: "10px 14px", borderRadius: 10,
+            background: "rgba(6,11,20,0.88)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            minWidth: 130,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "baseline" }}>
+              <span style={{ fontSize: 9, fontFamily: "monospace", color: "rgba(255,255,255,0.35)", letterSpacing: "0.15em" }}>TICKS</span>
+              <span style={{ fontSize: 16, fontFamily: "monospace", fontWeight: 800, color: "#fff" }}>
+                {tickCount}<span style={{ color: "rgba(255,255,255,0.3)" }}>/{totalTicks}</span>
+              </span>
+            </div>
+            <div style={{ width: "100%", height: 5, background: "rgba(255,255,255,0.08)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", width: `${progPct}%`, borderRadius: 3,
+                background: `linear-gradient(90deg, ${sideColor}, ${sideColor}cc)`,
+                transition: "width 0.35s ease",
+              }} />
+            </div>
+            <span style={{ fontSize: 10, fontFamily: "monospace", color: sideColor }}>
+              {stake} {currency}
+            </span>
+          </div>
+        )}
+
+        {/* ── Result panel ── */}
         {gameState === "result" && result && (
           <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pointer-events-auto"
             style={{ padding: "16px 20px", background: "rgba(8,13,24,0.92)" }}>
             <div style={{ marginBottom: 8, fontSize: 13, fontFamily: "monospace", color: "var(--text-muted)" }}>
-              Final: 🟢 {greenCount} vs 🔴 {redCount}
+              Final: {greenCount} green vs {redCount} red
             </div>
             <GameResult
               won={result.won}

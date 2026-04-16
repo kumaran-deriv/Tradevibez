@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatters";
 import { TrendingUp, TrendingDown, BarChart3, Target, DollarSign } from "lucide-react";
 import type { ProfitTransaction } from "@/types/deriv";
@@ -32,50 +31,97 @@ export function TradeStats({ transactions, currency }: TradeStatsProps) {
     {
       label: "Total P&L",
       value: formatCurrency(stats.totalPnl, currency),
-      isPositive: stats.totalPnl >= 0,
+      color: stats.totalPnl >= 0 ? "#22c55e" : "#ef4444",
       icon: stats.totalPnl >= 0 ? TrendingUp : TrendingDown,
     },
     {
       label: "Win Rate",
       value: `${stats.winRate.toFixed(1)}%`,
-      isPositive: stats.winRate >= 50,
+      color: stats.winRate >= 50 ? "#22c55e" : "#f59e0b",
       icon: Target,
     },
     {
       label: "Total Trades",
       value: stats.totalTrades.toString(),
-      isPositive: null,
+      color: "#3b82f6",
       icon: BarChart3,
     },
     {
       label: "Avg Return",
       value: formatCurrency(stats.avgReturn, currency),
-      isPositive: stats.avgReturn >= 0,
+      color: stats.avgReturn >= 0 ? "#14b8a6" : "#ef4444",
       icon: DollarSign,
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
       {items.map((item) => {
         const Icon = item.icon;
-        const colorClass =
-          item.isPositive === null
-            ? "text-blue-400"
-            : item.isPositive
-              ? "text-emerald-400"
-              : "text-red-400";
-
         return (
-          <Card key={item.label} padding="sm">
-            <div className="flex items-center gap-2 mb-1">
-              <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
-              <span className="text-xs text-gray-500">{item.label}</span>
+          <div
+            key={item.label}
+            style={{
+              position: "relative",
+              borderRadius: 14,
+              border: `1px solid ${item.color}20`,
+              borderLeft: `3px solid ${item.color}`,
+              background: `linear-gradient(135deg, ${item.color}0a 0%, transparent 60%)`,
+              padding: "16px 18px",
+              overflow: "hidden",
+            }}
+          >
+            {/* Subtle radial glow */}
+            <div
+              style={{
+                position: "absolute",
+                top: -20,
+                right: -20,
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                background: `radial-gradient(circle, ${item.color}15 0%, transparent 70%)`,
+                filter: "blur(12px)",
+                pointerEvents: "none",
+              }}
+            />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <Icon
+                style={{
+                  width: 16,
+                  height: 16,
+                  color: item.color,
+                  filter: `drop-shadow(0 0 6px ${item.color}60)`,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  letterSpacing: "0.1em",
+                  fontFamily: "monospace",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                }}
+              >
+                {item.label}
+              </span>
             </div>
-            <p className={`text-lg font-semibold font-mono tabular-nums ${colorClass}`}>
+
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                fontFamily: "monospace",
+                color: item.color,
+                letterSpacing: "-0.02em",
+                textShadow: `0 0 20px ${item.color}30`,
+              }}
+            >
               {item.value}
-            </p>
-          </Card>
+            </div>
+          </div>
         );
       })}
     </div>

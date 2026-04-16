@@ -45,10 +45,28 @@ export function useProfitTable(isAuthenticated: boolean) {
 
           if (result) {
             setTotalCount(result.count);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const txs = result.transactions.map((raw: any) => {
+              const buyPrice = Number(raw.buy_price ?? 0);
+              const sellPrice = Number(raw.sell_price ?? 0);
+              const payout = Number(raw.payout ?? 0);
+              const effectiveSell = sellPrice || payout;
+              return {
+                contract_id: Number(raw.contract_id ?? 0),
+                buy_price: buyPrice,
+                sell_price: effectiveSell,
+                profit_loss: effectiveSell - buyPrice,
+                longcode: String(raw.longcode ?? ""),
+                shortcode: String(raw.shortcode ?? raw.contract_type ?? ""),
+                purchase_time: Number(raw.purchase_time ?? 0),
+                sell_time: Number(raw.sell_time ?? 0),
+                transaction_id: Number(raw.transaction_id ?? 0),
+              };
+            });
             setTransactions((prev) =>
-              append ? [...prev, ...result.transactions] : result.transactions
+              append ? [...prev, ...txs] : txs
             );
-            offsetRef.current = offset + result.transactions.length;
+            offsetRef.current = offset + txs.length;
           }
         }
       );

@@ -1,4 +1,4 @@
-# Prompts Log — DerivEdge
+# Prompts Log — TradeVibez
 
 Chronological record of ALL AI interactions, what they produced, and what we learned.
 
@@ -842,5 +842,248 @@ Sounds are called at the right game moments: hit/critical/combo on each tick, KO
 
 **Build:** `npx tsc --noEmit` clean.
 **Files:** 4 created, `GameLobby.tsx` + `games/page.tsx` updated.
+
+---
+
+## Phase 9: Game Polish + 4 New Games
+
+### Interaction: Three Game Bug Fixes
+**Prompt:** "Dragon race still not working correctly .. Pressure builder game is not ending. Market melody is not clear on what wins and what doesnt"
+**Outcome:** Three targeted fixes across three games:
+
+**Dragon Race — dragons facing wrong way:**
+- `DragonRaceCanvas.tsx`: Both dragons had `rotationY={0}` which meant they faced -Z while racing toward +Z. Fixed with `rotationY={Math.PI}` on both. Adjusted spark trail position from `[0, 0.15, -0.5]` to `[0, 0.15, -0.8]`.
+
+**Pressure Blaster — game never ending:**
+- `MeteorBlasterGame.tsx`: Contract result subscription had a race condition — the contract could already be settled when the initial `proposal_open_contract` response arrived, but only the subscription callback checked for `is_sold`. Fix: extracted `handleSettled` function, checked initial response for `is_sold === 1 || status === "sold"`. Added 8-second hard timeout fallback after all ticks complete to force-end the game if the contract result subscription misses the settlement.
+
+**Market Melody — unclear win/loss:**
+- `MusicPianoGame.tsx`: No live indicator of game progress. Fix: added `upTicks` and `downTicks` counters, WINNING/LOSING/EVEN badge in live HUD, explicit "Price goes UP = you WIN" text on idle screen bet buttons, result screen explanation "Price went UP (15 up vs 8 down)".
+
+**Learning:** Three different failure modes: visual (wrong rotation), race condition (missed settlement), UX (unclear feedback). Each required understanding the specific system.
+**Files touched:** `DragonRaceCanvas.tsx`, `MeteorBlasterGame.tsx`, `MusicPianoGame.tsx`
+
+---
+
+### Interaction: Hex Color Filler Simplification
+**Prompt:** "Hex color filler adds red and green for each tick but the count stays same and is confusing.. Keep it simple"
+**Outcome:** The `triggerTick` method was claiming a hex for BOTH the winning direction AND the losing direction on every tick, making counts confusing. Simplified to only claim one hex per tick for the winning direction:
+```typescript
+triggerTick(dir: "up" | "down" | "flat") {
+  if (endState.current) return;
+  if (dir === "flat") return;
+  const color: "green" | "red" = dir === "up" ? "green" : "red";
+  claimHex(color);
+},
+```
+**Learning:** Simpler is better. One tick = one hex = clear visual.
+**Files touched:** `HexColorFillerCanvas.tsx`
+
+---
+
+### Interaction: Four New Game Concepts — Plan + Approval
+**Prompt:** "Now 2 interactive game ideas.. Replace chain reaction with vault heist (graphical) user has to match the tick up down in order to open the vault.. Can be in 3 4 5 values giving higher payouts.. each set has 2 so if user clear a set they can close the contract for a smaller payout. Similar concept for penalty shootouts. Redesign rise and fall and guess the digit games to be graphical"
+
+**Clarification questions answered:**
+- Vault Heist contract type? → CALL/PUT per tick (Recommended)
+- Penalty Shootout mechanic? → Odd/even predictions
+- Visual style? → 3D Three.js scenes
+
+**Plan produced:** Full plan for 4 games:
+1. **Vault Heist** (replaces Chain Reaction) — 2D Canvas vault-cracking with tumbler predictions, sets, cash-out
+2. **Penalty Shootout** (replaces Tick Plinko) — 3D penalty kicks, ODD/EVEN per kick
+3. **Rocket Rise** (replaces Rise/Fall) — *REJECTED by user: "Instead of rocket plan something else"*
+4. **Digit Oracle** (replaces Digits) — 3D crystal ball scene
+
+**Learning:** User rejected the Rocket Rise concept immediately — "plan something else". This reinforced the importance of checking in on creative direction before building.
+**Files touched:** None (planning only)
+
+---
+
+### Interaction: Rise/Fall Replacement — Rocket Rejected
+**Prompt:** "Instead of rocket plan something else"
+**Outcome:** Rocket Rise concept rejected. Replaced with **Tidal Surge** — an ocean wave scene where a ship rides the waves. Tide rises/falls based on live market price vs entry price. Same CALL/PUT time-based contracts underneath. Visual: stars, moon, animated wave layers, ship with tilting sail, profit/loss zones, countdown ring, storm/sunrise effects for loss/win.
+**Learning:** When presenting creative concepts, have alternatives ready. The ocean/wave metaphor is natural for "rise/fall" and avoids the sci-fi associations that didn't resonate.
+
+---
+
+### Interaction: Cross-cutting Requirement — Tick Data + Early Payout
+**Prompt:** "Show ticks data for source of truth and early payout option in all the games so it is close to trading"
+**Outcome:** All new games (Vault Heist, Penalty Shootout, Tidal Surge, Digit Oracle) built with:
+- Visible tick data feed in live HUD showing real-time quotes and direction
+- "CASH OUT EARLY" button that sells the contract via `authWs.send({ sell: contractId, price: 0 })`
+These features make the games feel closer to real trading, providing transparency and control.
+**Learning:** This is a foundational UX principle for gamified trading — users need to trust the source of truth (real ticks) and have the same control options (early payout) as the underlying financial instrument.
+
+---
+
+### Interaction: Building All 4 Games — Parallel Agent Execution
+**Prompt:** *(Implementation of approved plan)*
+**Outcome:** Built 8 new files across 4 games using parallel background agents:
+
+**Vault Heist** — `VaultHeistCanvas.tsx` (646 lines) + `VaultHeistGame.tsx` (698 lines):
+- 2D Canvas (600x520). Dark metallic vault with gold glow. Large vault door with radial gradient and clock lines. Row of circular tumblers (pending/active/correct/wrong states). Progressive vault crack revealing gold treasure. Particle system for correct (green/gold), alarm (red), vault open (gold burst). Progress bar. Alarm red overlay.
+- Game: difficulty selector (3/4/5 locks), prediction sequence (UP/DOWN toggles), set-based cash-out system. CALL contract with tick duration. Tumbler click/correct/alarm/vault-creak sounds.
+
+**Penalty Shootout** — `PenaltyShootoutCanvas.tsx` (568 lines) + `PenaltyShootoutGame.tsx` (727 lines):
+- 3D Three.js scene. Goal posts + net. Ball with physics. Goalkeeper with dive animation. Stadium lights. Scoreboard (drei Text). Confetti/smoke particles. Camera shake.
+- Game: 5 sequential kicks using DIGITEVEN/DIGITODD 1-tick contracts. ODD/EVEN prediction per kick. Multiplier system (0-2 goals = 0x, 3 goals = 1.5x, 4 = 3x, 5 = 8x). Kick/goal/save/whistle sounds.
+
+**Tidal Surge** — `TidalSurgeCanvas.tsx` (710 lines) + `TidalSurgeGame.tsx` (~600 lines):
+- 2D Canvas (700x480). Ocean scene: sky gradient, moon, 80 twinkling stars, 4 animated wave layers (sine composites), ship with tilting hull/mast/sail, entry price line, profit/loss zone gradients, tide arrow, bubbles, spray particles, countdown ring. Win: golden sunrise + confetti. Loss: storm clouds + lightning flash.
+- Game: CALL/PUT time-based contracts (5s/15s/30s/1m). Rise/Fall card selection. Live price comparison, tick history feed, CASH OUT EARLY button. Wave/tick/countdown/win/lose sounds.
+
+**Digit Oracle** — `DigitOracleCanvas.tsx` (680 lines) + `DigitOracleGame.tsx` (~650 lines):
+- 3D Three.js scene. Crystal ball (meshPhysicalMaterial, transmission 0.6, clearcoat). Ornate gold base (cylinder + rims + torus ring). Inner glow sphere (emissive purple). Digit text display (drei Text, spins during processing). Score gems (orbiting green spheres). Burst ring effect for match/miss. Win/end sparkles (drei Sparkles, 100+ particles). Mystical purple/indigo lighting.
+- Game: Even/Odd and Match Digit modes (DIGITEVEN/DIGITODD/DIGITMATCH/DIGITDIFF). Crystal spin → reveal animation per tick. Hit/miss tracking. Tick feed with checkmark/cross. CASH OUT EARLY button. Spin/reveal/match/miss/win/lose sounds.
+
+**`games/page.tsx`:** Updated `SoloGameId` type, replaced chain-reaction/tick-plinko/rise-fall/digits entries with vault-heist/penalty-shootout/tidal-surge/digit-oracle. Updated imports and conditional rendering.
+
+**Build:** `npx tsc --noEmit` — 0 errors (one type fix: `direction` from `useTicks` needed explicit union type cast in TidalSurgeGame).
+
+**Files touched:** 8 new files, `games/page.tsx` updated.
+
+---
+
+## Phase 9: Game Polish, Bug Fixes & 1HZ Markets
+
+### Interaction 45: Penalty Shootout — Inverted & Double-Counted Goals
+**Prompt:** "[screenshot] SAVED GOALS are inverted and for each tick both is marked"
+**Outcome:** Found that PenaltyShootoutCanvas.tsx had its own internal `goalsRef`/`savesRef` counters duplicating the game component's tracking. Also had a `Scoreboard` component rendered inside the canvas. Removed all duplicate tracking from canvas, removed in-canvas Scoreboard, let the game component be the single source of truth.
+**Learning:** When game logic lives in both the canvas and the game component, score state diverges. Keep scoring in one place only.
+**Files touched:** `PenaltyShootoutCanvas.tsx`
+
+---
+
+### Interaction 46: Penalty Shootout — Goals Count Wrong (Double-Fire)
+**Prompt:** "[screenshot] Goals numbers are wrong.. only two shoots taken but 3 is marked"
+**Outcome:** Root cause: tick double-firing during 800ms animation timeout. With 1HZ markets (1 tick/second), a new tick could arrive while phase was still `waitingForTick` during the animation delay. Fix: set `phaseRef.current = "idle"` immediately after capturing the resolving tick, before the `setTimeout` animation delay.
+**Learning:** With 1-second tick intervals, any animation delay >1s creates a window for duplicate processing. Capture the tick and block immediately, animate after.
+**Files touched:** `PenaltyShootoutGame.tsx`
+
+---
+
+### Interaction 47: Add 1HZ Markets + Live Tick Display to Hex Color Filler
+**Prompt:** "Add ticks in hex filler game for source of truth"
+**Outcome:** Added 5 1HZ tick markets (1HZ100V through 1HZ10V) to GAME_MARKETS array (8 total). Added live tick display with ChevronUp/ChevronDown direction indicator in the game's live HUD. Updated market grid to 4 columns for the larger set.
+**Learning:** Live tick display in games provides transparency — users can verify the market is actually moving and the game isn't rigged.
+**Files touched:** `HexColorFillerGame.tsx`
+
+---
+
+### Interaction 48: 1HZ Markets + Reduced Ticks for Music Piano
+**Prompt:** "Next harmony music game.. Add 1Hz and reduce total ticks to 10 15 20"
+**Outcome:** Added 5 1HZ markets (8 total). Changed TICK_OPTIONS from `[20, 30, 40]` to `[10, 15, 20]` with default 15. Added live tick display. Updated grid to 4 columns.
+**Learning:** Fewer ticks make games faster-paced and more engaging for demo purposes.
+**Files touched:** `MusicPianoGame.tsx`
+
+---
+
+### Interaction 49: TidalSurge Runtime Crash — `.toFixed()` on String
+**Prompt:** "Tidal surge breaks the game — Application error: a client-side exception has occurred"
+**Browser console:** `W.toFixed is not a function`
+**Outcome:** Deriv API returns `tick.quote` as a JSON string despite TypeScript typing it as `number`. Calling `.toFixed()` on a string crashes at runtime. Fixed in two places:
+1. `useTicks.ts` — Added `t.quote = Number(t.quote)` when receiving ticks
+2. `TidalSurgeGame.tsx` — Wrapped all 4 `.toFixed()` calls with `Number()` defensively
+Only TidalSurge crashed because it was the only game calling `.toFixed()` directly on `tick.quote` in the render path.
+**Learning:** Never trust API type annotations. Deriv WebSocket returns numeric fields as JSON strings. Always coerce at the boundary. TypeScript gives false confidence here — the runtime type can differ from the interface.
+**Files touched:** `useTicks.ts`, `TidalSurgeGame.tsx`
+
+---
+
+### Interaction 50: Cash Out Not Working on Tidal & Oracle
+**Prompt:** "Cashout button not working on tidal or on oracle"
+**Outcome:** `authWs.send({ sell: contractId, price: 0 })` was fire-and-forget with no response callback. Added response handler that processes `resp.sell.sold_for`, triggers win/lose animation, and transitions to result state.
+**Learning:** WebSocket `sell` calls need response handlers — without them, the UI never transitions after selling.
+**Files touched:** `TidalSurgeGame.tsx`, `DigitOracleGame.tsx`
+
+---
+
+### Interaction 51: Remove Cash Out + Add 1HZ Markets Across All Games
+**Prompt:** "Remove cashout button on 4 games - plinko, Tidal, Oracle, Pressure — Add 1Hz on all required"
+**Outcome:** Batch operation across 7 files:
+
+**Cash out removed (4 games):**
+- `TickPlinkoGame.tsx` — deleted `handleCashOut`, button, "CASHED OUT EARLY" badge
+- `TidalSurgeGame.tsx` — deleted `handleCashOut`, button, "cash out early" info text
+- `DigitOracleGame.tsx` — deleted `handleCashOut`, button, info text references
+- `MeteorBlasterGame.tsx` — deleted `handleCashOut` callback and button
+
+**1HZ markets added (6 games):**
+- `TickPlinkoGame.tsx` — 5 new 1HZ markets (8 total), 4-col grid
+- `TidalSurgeGame.tsx` — 5 new 1HZ markets (9 total, replaced forex pairs)
+- `DigitOracleGame.tsx` — 5 new 1HZ markets (10 total)
+- `BearVsBullGame.tsx` — 5 new 1HZ markets (8 total), 4-col grid
+- `GrandPrixGame.tsx` — 5 new 1HZ markets (9 total), 3-col grid
+- `DragonRaceGame.tsx` — 5 new 1HZ markets (9 total), 3-col grid
+
+Skipped 1HZ for MeteorBlaster — it only uses Crash/Boom markets (game mechanic requires spike detection).
+
+**Learning:** 1HZ markets (1 tick/second) make games much more responsive. Batch operations across many files need careful tracking — used todo list to avoid missing any.
+**Files touched:** 7 game files
+
+---
+
+### Interaction 52: Add "Tick Boxing" Multiplayer Game Tab
+**Prompt:** "Add a multiplayer game with tab TICK BOXING and mark it soon"
+**Outcome:** Added `"tick-boxing"` to `GroupGameId` union type. Added entry to `GROUP_GAMES` array with `comingSoon: true`, `Flame` icon, red accent. Shows with "SOON" badge alongside Chain Race and Market Battle.
+**Learning:** `BoxingGlove` icon doesn't exist in lucide-react. `Flame` works as a combat/action alternative.
+**Files touched:** `games/page.tsx`
+
+---
+
+### Interaction 53: Reorder Solo Games
+**Prompt:** "Move the Pressure game and grand prix to last and plinko game move to 3rd place after the heist"
+**Outcome:** Reordered `SOLO_GAMES` array: Bear vs Bull, Vault Heist, Tick Plinko, Penalty Shootout, Hex Color Filler, Market Melody, Tidal Surge, Digit Oracle, Grand Prix, Pressure Blaster.
+**Learning:** Game order matters for first impressions — strongest/most polished games go first.
+**Files touched:** `games/page.tsx`
+
+---
+
+## Phase 10: History Page Fix + Polish + Docs
+
+### Interaction 54: History Page — NaN Values + Dull Design
+**Prompt:** "History page is not good.. It is dull and values show NaN in few places"
+**Outcome:** Two-part fix:
+
+**NaN Fix (`useProfitTable.ts`):** Deriv API `profit_table` response has **no `profit_loss` field** — only `buy_price`, `sell_price`, and `payout`. Our code was doing `Number(undefined)` → `NaN`. Fixed by calculating P&L as `sell_price - buy_price`, with `payout` as fallback for game contracts where `sell_price` may be 0.
+
+**Visual Redesign:**
+- `TradeStats.tsx` — Plain cards → gradient backgrounds with colored left borders, radial glow effects, icon drop-shadows, accent-colored values with text glow
+- `TradeHistoryTable.tsx` — Basic table → premium styled container with accent header, colored left-border per row (green=profit, red=loss), human-readable contract labels (CALL→Rise, PUT→Fall, DIGITODD→Odd, etc.), glowing P&L values
+- `page.tsx` — Updated header with accent icon glow and styled subtitle, consistent error alert styling
+
+**Learning:** Always verify API response schemas against your TypeScript interfaces. The Deriv API has `buy_price` and `sell_price` but NOT `profit_loss` — our interface assumed a field that doesn't exist. The `payout` fallback is critical for digit/touch contracts where `sell_price` may be 0 but `payout` reflects what was received.
+**Files touched:** `useProfitTable.ts`, `TradeStats.tsx`, `TradeHistoryTable.tsx`, `history/page.tsx`
+
+---
+
+### Interaction 55: Hero Page Audit
+**Prompt:** "Verify the hero page once if it requires any touches"
+**Outcome:** Full audit found 2 stale items:
+1. Game preview cards showed "Rise or Fall" / "Guess the Digit" (old games) → Updated to "Bear vs Bull" / "Vault Heist" (actual top games)
+2. Copy said "Two intuitive games" → Updated to "10 unique games"
+
+Everything else passed: all route links valid, no TODO comments, footer year correct (2026), feature claims accurate, Space View animation working, dark/light theme toggle functional.
+**Learning:** Landing page copy drifts as features evolve. Always audit before submission.
+**Files touched:** `page.tsx`
+
+---
+
+### Interaction 56: Documentation Update
+**Prompt:** "Update the docs, Add a readme file and add a one pager for the submission"
+**Outcome:**
+- `docs/vibe-coding/README.md` — Updated stale stats (3/7 → 6/7 phases, 18 → 44+ interactions, Netlify → Vercel URL, added React Three Fiber to stack)
+- `README.md` (new) — Full GitHub-ready README with tech stack, all 10 games with contract types, architecture highlights, quick start, project structure
+- `docs/SUBMISSION.md` (new) — One-pager for judges: what/why/how, innovation (10 games on real contracts), vibe-coding stats, architecture diagram, team credit
+**Files touched:** `docs/vibe-coding/README.md`, `README.md`, `docs/SUBMISSION.md`
+
+---
+
+### Interaction 57: History Page — P&L Still NaN for Game Contracts
+**Prompt:** "History tab is still showing PnL as NaN and win percentage as 0"
+**Outcome:** Discovered via user-provided API response schema that `profit_table` has no `profit_loss` field at all. Previous fix calculated `sell_price - buy_price`, but for game contracts (DIGITODD, ONETOUCH, etc.) `sell_price` can be 0 while `payout` holds the actual received amount. Added `payout` as fallback: `effectiveSell = sell_price || payout`, then `profit_loss = effectiveSell - buy_price`.
+**Learning:** Game contracts settle differently from standard contracts. `sell_price` is for manually sold contracts; `payout` is for contracts that expire in-the-money. Need both to cover all cases.
+**Files touched:** `useProfitTable.ts`
 
 ---
