@@ -1,4 +1,4 @@
-# DerivEdge — Full Project Plan
+# Tradevibez — Full Project Plan
 
 ## 🏗️ Architecture Overview
 
